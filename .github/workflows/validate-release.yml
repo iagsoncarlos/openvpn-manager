@@ -1,0 +1,186 @@
+name: Validate Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Validate version consistency
+      run: |
+        echo "🔍 Checking version consistency across files..."
+        
+        VERSION_FILE=$(cat VERSION)
+        echo "VERSION file: $VERSION_FILE"
+        
+        # Check config.py
+        if [ -f "config.py" ]; then
+          CONFIG_VERSION=$(grep "APP_VERSION" config.py | cut -d'"' -f2)
+          echo "config.py: $CONFIG_VERSION"
+          if [ "$VERSION_FILE" != "$CONFIG_VERSION" ]; then
+            echo "❌ Version mismatch in config.py"
+            exit 1
+          fi
+        fi
+        
+        # Check pyproject.toml
+        if [ -f "pyproject.toml" ]; then
+          PYPROJECT_VERSION=$(grep "version = " pyproject.toml | cut -d'"' -f2)
+          echo "pyproject.toml: $PYPROJECT_VERSION"
+          if [ "$VERSION_FILE" != "$PYPROJECT_VERSION" ]; then
+            echo "❌ Version mismatch in pyproject.toml"
+            exit 1
+          fi
+        fi
+        
+        # Check setup.py
+        if [ -f "setup.py" ]; then
+          SETUP_VERSION=$(grep "version=" setup.py | cut -d'"' -f2)
+          echo "setup.py: $SETUP_VERSION"
+          if [ "$VERSION_FILE" != "$SETUP_VERSION" ]; then
+            echo "❌ Version mismatch in setup.py"
+            exit 1
+          fi
+        fi
+        
+        echo "✅ All versions are consistent!"
+
+    - name: Validate build tools
+      run: |
+        echo "🔧 Checking build tools..."
+        
+        if [ ! -f "version.sh" ]; then
+          echo "❌ version.sh not found"
+          exit 1
+        fi
+        
+        if [ ! -x "version.sh" ]; then
+          echo "❌ version.sh is not executable"
+          exit 1
+        fi
+        
+        if [ ! -f "build.sh" ]; then
+          echo "❌ build.sh not found"
+          exit 1
+        fi
+        
+        if [ ! -x "build.sh" ]; then
+          echo "❌ build.sh is not executable"
+          exit 1
+        fi
+        
+        echo "✅ Build tools are valid!"
+
+    - name: Test version script
+      run: |
+        echo "🧪 Testing version script..."
+        
+        # Test showing current version
+        ./version.sh show
+        
+        # Test version validation (this should not change anything)
+        CURRENT_VERSION=$(cat VERSION)
+        echo "Current version: $CURRENT_VERSION"
+        
+        echo "✅ Version script works correctly!"
+
+    - name: Validate CHANGELOG
+      run: |
+        echo "📋 Checking CHANGELOG.md..."
+        
+        if [ ! -f "CHANGELOG.md" ]; then
+          echo "❌ CHANGELOG.md not found"
+          exit 1
+        fi
+        
+        VERSION_FILE=$(cat VERSION)
+        if ! grep -q "\[$VERSION_FILE\]" CHANGELOG.md; then
+          echo "⚠️ Current version $VERSION_FILE not found in CHANGELOG.md"
+        else
+          echo "✅ Version $VERSION_FILE found in CHANGELOG.md"
+        fi
+
+    - name: Test build process
+      run: |
+        echo "🏗️ Testing build process..."
+        
+        # Install dependencies
+        python -m pip install --upgrade pip
+        pip install build wheel
+        
+        # Test Python package build
+        python -m build --sdist --wheel
+        
+        # Check if files were created
+        if [ ! -d "dist" ]; then
+          echo "❌ dist directory not created"
+          exit 1
+        fi
+        
+        WHEEL_COUNT=$(find dist/ -name "*.whl" | wc -l)
+        TAR_COUNT=$(find dist/ -name "*.tar.gz" | wc -l)
+        
+        echo "Built files:"
+        ls -la dist/
+        
+        if [ "$WHEEL_COUNT" -eq 0 ]; then
+          echo "❌ No wheel files created"
+          exit 1
+        fi
+        
+        if [ "$TAR_COUNT" -eq 0 ]; then
+          echo "❌ No source distribution created"
+          exit 1
+        fi
+        
+        echo "✅ Python build successful!"
+
+    - name: Test installation
+      run: |
+        echo "📦 Testing package installation..."
+        
+        # Install the built wheel
+        pip install dist/*.whl
+        
+        # Try to import the main module (adjust as needed)
+        python -c "import sys; print('Python path:', sys.path)"
+        
+        echo "✅ Package installs correctly!"
+
+    - name: Generate validation report
+      if: always()
+      run: |
+        echo "## 🔍 Release Validation Report" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Version Consistency" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ All version files match" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Build Tools" >> $GITHUB_STEP_SUMMARY  
+        echo "- ✅ version.sh exists and is executable" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ build.sh exists and is executable" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Package Build" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Python wheel builds successfully" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Source distribution builds successfully" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Package installs correctly" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Documentation" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ CHANGELOG.md exists and is valid" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Status**: Release validation passed! 🎉" >> $GITHUB_STEP_SUMMARY

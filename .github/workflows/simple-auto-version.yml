@@ -1,0 +1,54 @@
+name: Simple Auto Version
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  auto-version:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Configure Git
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+
+    - name: Check if version update needed
+      id: check
+      run: |
+        if echo "${{ github.event.pull_request.title }}" | grep -q "chore: bump version"; then
+          echo "skip=true" >> $GITHUB_OUTPUT
+        else
+          echo "skip=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Update version
+      if: steps.check.outputs.skip == 'false'
+      run: |
+        chmod +x ./version.sh
+        OLD_VERSION=$(cat VERSION)
+        ./version.sh patch
+        NEW_VERSION=$(cat VERSION)
+        echo "OLD_VERSION=$OLD_VERSION" >> $GITHUB_ENV
+        echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+
+    - name: Commit changes
+      if: steps.check.outputs.skip == 'false'
+      run: |
+        git add VERSION config.py pyproject.toml setup.py
+        if [ -f "debian/changelog" ]; then
+          git add debian/changelog
+        fi
+        git commit -m "chore: bump version to $NEW_VERSION"
+        git push

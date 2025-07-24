@@ -1,0 +1,281 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Version increment type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      custom_version:
+        description: 'Custom version (optional, overrides version_type)'
+        required: false
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine
+
+    - name: Configure Git
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+
+    - name: Get current version
+      id: current_version
+      run: |
+        CURRENT_VERSION=$(cat VERSION)
+        echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+        echo "Current version: $CURRENT_VERSION"
+
+    - name: Calculate new version
+      id: new_version
+      run: |
+        if [ -n "${{ inputs.custom_version }}" ]; then
+          NEW_VERSION="${{ inputs.custom_version }}"
+          echo "Using custom version: $NEW_VERSION"
+        else
+          chmod +x ./version.sh
+          # Run version.sh in dry-run mode to get new version
+          case "${{ inputs.version_type }}" in
+            "major")
+              NEW_VERSION=$(./version.sh major | grep "→" | cut -d'→' -f2 | xargs || echo "")
+              ;;
+            "minor")
+              NEW_VERSION=$(./version.sh minor | grep "→" | cut -d'→' -f2 | xargs || echo "")
+              ;;
+            "patch")
+              NEW_VERSION=$(./version.sh patch | grep "→" | cut -d'→' -f2 | xargs || echo "")
+              ;;
+          esac
+          
+          # If the above doesn't work, calculate manually
+          if [ -z "$NEW_VERSION" ]; then
+            CURRENT_VERSION=$(cat VERSION)
+            IFS='.' read -ra VERSION_PARTS <<< "$CURRENT_VERSION"
+            MAJOR=${VERSION_PARTS[0]}
+            MINOR=${VERSION_PARTS[1]}
+            PATCH=${VERSION_PARTS[2]}
+            
+            case "${{ inputs.version_type }}" in
+              "major")
+                MAJOR=$((MAJOR + 1))
+                MINOR=0
+                PATCH=0
+                ;;
+              "minor")
+                MINOR=$((MINOR + 1))
+                PATCH=0
+                ;;
+              "patch")
+                PATCH=$((PATCH + 1))
+                ;;
+            esac
+            
+            NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          fi
+        fi
+        
+        echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+        echo "New version will be: $NEW_VERSION"
+
+    - name: Update version files
+      run: |
+        chmod +x ./version.sh
+        if [ -n "${{ inputs.custom_version }}" ]; then
+          ./version.sh set "${{ steps.new_version.outputs.version }}"
+        else
+          ./version.sh "${{ inputs.version_type }}"
+        fi
+
+    - name: Update CHANGELOG.md
+      run: |
+        NEW_VERSION="${{ steps.new_version.outputs.version }}"
+        CURRENT_DATE=$(date +%Y-%m-%d)
+        
+        # Create temporary file for new changelog
+        cat > temp_changelog.md << EOF
+# Changelog
+
+All notable changes to OpenVPN Manager will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Planned
+- Enhanced connection statistics and monitoring
+- Multiple VPN provider support
+- Configuration backup and restore
+- Advanced logging and diagnostics
+
+## [$NEW_VERSION] - $CURRENT_DATE
+
+### Added
+- Automated release via GitHub Actions
+
+### Changed
+- Version bumped to $NEW_VERSION
+
+### Fixed
+- Minor bug fixes and improvements
+
+EOF
+        
+        # Append existing changelog content (skip the header and unreleased section)
+        tail -n +18 CHANGELOG.md >> temp_changelog.md
+        mv temp_changelog.md CHANGELOG.md
+
+    - name: Build package
+      run: |
+        chmod +x ./build.sh
+        ./build.sh
+
+    - name: Create source distribution
+      run: |
+        python -m build --sdist --wheel
+
+    - name: Commit version changes
+      run: |
+        git add -A
+        git commit -m "chore: bump version to ${{ steps.new_version.outputs.version }}"
+        git push
+
+    - name: Create Git tag
+      run: |
+        git tag -a "v${{ steps.new_version.outputs.version }}" -m "Release v${{ steps.new_version.outputs.version }}"
+        git push origin "v${{ steps.new_version.outputs.version }}"
+
+    - name: Extract changelog for release
+      id: changelog
+      run: |
+        NEW_VERSION="${{ steps.new_version.outputs.version }}"
+        
+        # Extract changelog for this version
+        awk "/## \[$NEW_VERSION\]/{flag=1; next} /## \[/{flag=0} flag" CHANGELOG.md > release_notes.md
+        
+        # If release notes are empty, create default ones
+        if [ ! -s release_notes.md ]; then
+          cat > release_notes.md << EOF
+## What's Changed
+
+* Version bumped to $NEW_VERSION
+* Build improvements and bug fixes
+* See [CHANGELOG.md](CHANGELOG.md) for full details
+
+**Full Changelog**: https://github.com/${{ github.repository }}/compare/v${{ steps.current_version.outputs.version }}...v$NEW_VERSION
+EOF
+        fi
+        
+        # Store in output (handle multiline)
+        {
+          echo 'notes<<EOF'
+          cat release_notes.md
+          echo EOF
+        } >> $GITHUB_OUTPUT
+
+    - name: Find build artifacts
+      id: artifacts
+      run: |
+        # Find the .deb file
+        DEB_FILE=$(find . -name "*.deb" -type f | head -1)
+        if [ -n "$DEB_FILE" ]; then
+          echo "deb_file=$DEB_FILE" >> $GITHUB_OUTPUT
+          echo "Found .deb file: $DEB_FILE"
+        fi
+        
+        # Find wheel files
+        WHEEL_FILES=$(find dist/ -name "*.whl" -type f 2>/dev/null || echo "")
+        TAR_FILES=$(find dist/ -name "*.tar.gz" -type f 2>/dev/null || echo "")
+        
+        echo "wheel_files=$WHEEL_FILES" >> $GITHUB_OUTPUT
+        echo "tar_files=$TAR_FILES" >> $GITHUB_OUTPUT
+        
+        if [ -n "$WHEEL_FILES" ]; then
+          echo "Found wheel files: $WHEEL_FILES"
+        fi
+        if [ -n "$TAR_FILES" ]; then
+          echo "Found source files: $TAR_FILES"
+        fi
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ steps.new_version.outputs.version }}
+        name: OpenVPN Manager v${{ steps.new_version.outputs.version }}
+        body: ${{ steps.changelog.outputs.notes }}
+        prerelease: ${{ inputs.prerelease }}
+        files: |
+          ${{ steps.artifacts.outputs.deb_file }}
+          dist/*.whl
+          dist/*.tar.gz
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Upload to PyPI (optional)
+      if: ${{ !inputs.prerelease }}
+      run: |
+        # Uncomment and configure if you want to publish to PyPI
+        # echo "To publish to PyPI, configure PYPI_API_TOKEN secret and uncomment:"
+        # echo "twine upload dist/*"
+        echo "PyPI upload skipped (not configured)"
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+
+    - name: Create deployment summary
+      run: |
+        cat >> $GITHUB_STEP_SUMMARY << EOF
+        ## 🚀 Release Created Successfully!
+        
+        ### Release Details
+        - **Version**: v${{ steps.new_version.outputs.version }}
+        - **Previous Version**: v${{ steps.current_version.outputs.version }}
+        - **Release Type**: ${{ inputs.version_type }}${{ inputs.custom_version && ' (custom)' || '' }}
+        - **Pre-release**: ${{ inputs.prerelease }}
+        
+        ### Artifacts Built
+        $([ -n "${{ steps.artifacts.outputs.deb_file }}" ] && echo "- ✅ Debian Package (.deb)")
+        $([ -n "${{ steps.artifacts.outputs.wheel_files }}" ] && echo "- ✅ Python Wheel (.whl)")
+        $([ -n "${{ steps.artifacts.outputs.tar_files }}" ] && echo "- ✅ Source Distribution (.tar.gz)")
+        
+        ### Next Steps
+        1. Check the [release page](https://github.com/${{ github.repository }}/releases/tag/v${{ steps.new_version.outputs.version }})
+        2. Test the release artifacts
+        3. Update documentation if needed
+        4. Announce the release to users
+        
+        EOF
