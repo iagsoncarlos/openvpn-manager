@@ -1,0 +1,53 @@
+Source: openvpn-manager
+Section: net
+Priority: optional
+Maintainer: Iágson Carlos Lima Silva <iagsoncarlos@gmail.com>
+Build-Depends: debhelper-compat (= 13), python3-all, python3-setuptools, dh-python, python3-pip
+Standards-Version: 4.6.0
+Homepage: https://github.com/iagsoncarlos/openvpn-manager
+Rules-Requires-Root: no
+
+Package: openvpn-manager
+Architecture: all
+Depends: ${python3:Depends}, ${misc:Depends}, 
+ python3 (>= 3.10),
+ python3-pyqt6,
+ openvpn,
+ resolvconf | systemd-resolved,
+ policykit-1,
+ zenity | kdialog,
+ sudo,
+ procps,
+ iproute2 | net-tools,
+ iputils-ping,
+ libxcb-cursor0,
+ libxcb-xinerama0,
+ libxcb-icccm4,
+ libxcb-image0,
+ libxcb-keysyms1,
+ libxcb-randr0,
+ libxcb-render-util0,
+ libxcb-shape0,
+ libxcb-sync1,
+ libxcb-xfixes0,
+ libqt6core6,
+ libqt6widgets6,
+ libqt6gui6
+Recommends: network-manager-openvpn, network-manager-openvpn-gnome
+Suggests: openvpn-systemd-resolved
+Description: PyQt6-based OpenVPN connection manager
+ OpenVPN Manager is a graphical user interface for managing OpenVPN
+ connections. It provides an easy-to-use interface for connecting to
+ and managing VPN configurations with proper privilege management.
+ .
+ Features include:
+  - Load and manage OpenVPN configuration files (.ovpn)
+  - Connect and disconnect from VPN servers with GUI authentication
+  - Real-time connection monitoring and data usage statistics
+  - Save connection credentials securely
+  - Desktop integration with application menu
+  - Automatic DNS resolution management
+  - Support for both terminal and GUI authentication
+ .
+ This package includes all necessary dependencies for a complete
+ OpenVPN management experience on Ubuntu/Debian systems.

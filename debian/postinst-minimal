@@ -1,0 +1,128 @@
+#!/bin/bash
+
+set -e
+
+case "$1" in
+    configure)
+        echo "Configuring OpenVPN Manager v0.2.1..."
+        
+        # Function to log messages
+        log_msg() {
+            echo "[POSTINST] $1"
+        }
+        
+        # Function to check if a Python package is available
+        check_python_package() {
+            python3 -c "import $1" 2>/dev/null
+        }
+        
+        log_msg "Checking Python dependencies..."
+        
+        # Check for bundled wheels first (self-contained version)
+        WHEELS_DIR="/usr/share/openvpn-manager/wheels"
+        if [ -d "$WHEELS_DIR" ] && [ "$(ls -A "$WHEELS_DIR" 2>/dev/null)" ]; then
+            log_msg "Found bundled wheels, installing PyQt6 dependencies..."
+            
+            # Install wheels for all users
+            for wheel in "$WHEELS_DIR"/*.whl; do
+                if [ -f "$wheel" ]; then
+                    WHEEL_NAME=$(basename "$wheel")
+                    log_msg "Installing $WHEEL_NAME..."
+                    pip3 install --force-reinstall --no-deps "$wheel" || {
+                        log_msg "Warning: Failed to install $WHEEL_NAME"
+                    }
+                fi
+            done
+            
+            log_msg "Bundled dependencies installation completed!"
+        else
+            log_msg "No bundled wheels found, checking system packages..."
+            
+            # Try system packages first
+            if ! check_python_package "PyQt6"; then
+                log_msg "PyQt6 not found, attempting installation..."
+                
+                # Try apt package first
+                if command -v apt-get >/dev/null 2>&1; then
+                    log_msg "Trying to install python3-pyqt6 via apt..."
+                    apt-get update >/dev/null 2>&1 || true
+                    if apt-get install -y python3-pyqt6 >/dev/null 2>&1; then
+                        log_msg "Successfully installed python3-pyqt6 via apt"
+                    else
+                        log_msg "apt installation failed, trying pip3..."
+                        pip3 install PyQt6>=6.4.0 || {
+                            log_msg "ERROR: Failed to install PyQt6. GUI will not work!"
+                        }
+                    fi
+                else
+                    log_msg "apt not available, trying pip3..."
+                    pip3 install PyQt6>=6.4.0 || {
+                        log_msg "ERROR: Failed to install PyQt6. GUI will not work!"
+                    }
+                fi
+            else
+                log_msg "PyQt6 already available"
+            fi
+        fi
+        
+        # Verify PyQt6 and apply Qt fix if needed
+        if check_python_package "PyQt6.QtWidgets"; then
+            log_msg "✅ PyQt6 installation verified successfully!"
+            
+            # Apply Qt XCB fix using integrated diagnostics
+            if [ -f "/usr/share/openvpn-manager/openvpn-manager-diagnostics.sh" ]; then
+                log_msg "🔍 Testing Qt platform plugin..."
+                if ! /usr/share/openvpn-manager/openvpn-manager-diagnostics.sh "silent"; then
+                    log_msg "⚠️  Qt platform issues detected, applying automatic fix..."
+                    if /usr/share/openvpn-manager/openvpn-manager-diagnostics.sh "fix-only" >/dev/null 2>&1; then
+                        log_msg "✅ Qt platform fix applied successfully"
+                    else
+                        log_msg "❌ Qt platform fix failed - manual intervention may be required"
+                    fi
+                else
+                    log_msg "✅ Qt platform plugin working correctly"
+                fi
+            fi
+        else
+            log_msg "❌ PyQt6 verification failed - GUI may not work"
+            log_msg "Manual installation required: pip3 install PyQt6"
+        fi
+        
+        # Basic system setup
+        log_msg "Setting up system integration..."
+        
+        # Ensure PolicyKit is properly configured
+        if command -v systemctl &> /dev/null; then
+            systemctl reload polkit.service 2>/dev/null || true
+            log_msg "PolicyKit service reloaded"
+        fi
+        
+        # Update desktop database
+        if command -v update-desktop-database &> /dev/null; then
+            update-desktop-database /usr/share/applications 2>/dev/null || true
+            log_msg "Desktop database updated"
+        fi
+        
+        # Ensure proper permissions for executables
+        chmod 755 /usr/bin/openvpn-manager-launcher 2>/dev/null || true
+        chmod 755 /usr/bin/openvpn-manager 2>/dev/null || true
+        
+        # Final status
+        echo "🎉 OpenVPN Manager installation completed!"
+        echo "📦 Version: 0.2.1"
+        echo ""
+        echo "🚀 Launch: openvpn-manager-launcher"
+        echo "🛠️  If issues: /usr/share/openvpn-manager/openvpn-manager-diagnostics.sh"
+        echo ""
+        ;;
+    
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+    
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

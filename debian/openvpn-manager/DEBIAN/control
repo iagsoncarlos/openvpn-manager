@@ -1,0 +1,28 @@
+Package: openvpn-manager
+Version: 0.2.1-1
+Architecture: all
+Maintainer: Iágson Carlos Lima Silva <iagsoncarlos@gmail.com>
+Installed-Size: 81089
+Depends: python3 (>= 3.10), python3-pip, openvpn, resolvconf | systemd-resolved, policykit-1, zenity | kdialog, sudo, procps, iproute2 | net-tools, iputils-ping
+Recommends: network-manager-openvpn, network-manager-openvpn-gnome
+Suggests: openvpn-systemd-resolved
+Section: net
+Priority: optional
+Homepage: https://github.com/iagsoncarlos/openvpn-manager
+Description: An OpenVPN connection manager
+ OpenVPN Manager with all Python dependencies bundled within the package.
+ This version includes PyQt6 wheels and installs them automatically during
+ package configuration, ensuring a completely self-contained installation.
+ .
+ Features include:
+  - Load and manage OpenVPN configuration files (.ovpn)
+  - Connect and disconnect from VPN servers with GUI authentication
+  - Real-time connection monitoring and data usage statistics
+  - Save connection credentials securely
+  - Desktop integration with application menu
+  - Automatic DNS resolution management
+  - Support for both terminal and GUI authentication
+  - Bundled PyQt6 dependencies (no internet required)
+ .
+ This package includes all necessary Python dependencies and requires
+ no external package downloads during installation.

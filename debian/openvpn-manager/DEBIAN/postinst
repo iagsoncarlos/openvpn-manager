@@ -1,0 +1,125 @@
+#!/bin/bash
+
+set -e
+
+case "$1" in
+    configure)
+        echo "Configuring OpenVPN Manager (Self-Contained v0.2.1)..."
+        
+        # Function to log messages
+        log_msg() {
+            echo "[POSTINST] $1"
+        }
+        
+        # Function to check if a Python package is available
+        check_python_package() {
+            python3 -c "import $1" 2>/dev/null
+        }
+        
+        log_msg "Checking Python dependencies..."
+        
+        # Install bundled Python wheels
+        WHEELS_DIR="/usr/share/openvpn-manager/wheels"
+        if [ -d "$WHEELS_DIR" ] && [ "$(ls -A "$WHEELS_DIR" 2>/dev/null)" ]; then
+            log_msg "Installing bundled Python dependencies..."
+            
+            # Install wheels for all users
+            for wheel in "$WHEELS_DIR"/*.whl; do
+                if [ -f "$wheel" ]; then
+                    WHEEL_NAME=$(basename "$wheel")
+                    log_msg "Installing $WHEEL_NAME..."
+                    pip3 install --force-reinstall --no-deps "$wheel" || {
+                        log_msg "Warning: Failed to install $WHEEL_NAME"
+                    }
+                fi
+            done
+            
+            log_msg "✅ Bundled dependencies installed successfully!"
+        else
+            log_msg "⚠️  No bundled wheels found, installing PyQt6 from internet..."
+            pip3 install PyQt6>=6.4.0 || {
+                log_msg "❌ Failed to install PyQt6. Manual installation required."
+            }
+        fi
+        
+        # Test PyQt6 installation
+        if check_python_package "PyQt6.QtWidgets"; then
+            log_msg "✅ PyQt6 installation verified!"
+        else
+            log_msg "⚠️  PyQt6 verification failed. GUI may not work."
+            log_msg "Manual installation: pip3 install PyQt6"
+        fi
+        
+        # Ensure OpenVPN scripts directory exists
+        if [ ! -d "/etc/openvpn" ]; then
+            mkdir -p /etc/openvpn
+        fi
+        
+        # Check if update-resolv-conf script exists, if not create a basic one
+        if [ ! -f "/etc/openvpn/update-resolv-conf" ]; then
+            echo "Creating basic DNS update script..."
+            cat > /etc/openvpn/update-resolv-conf << 'EOFSCRIPT'
+#!/bin/bash
+# Enhanced DNS update script for OpenVPN
+case "$script_type" in
+    up)
+        echo "Setting up VPN DNS..."
+        if [ -n "$foreign_option_1" ]; then
+            # Backup current resolv.conf
+            cp /etc/resolv.conf /etc/resolv.conf.openvpn.backup 2>/dev/null || true
+            # Extract DNS server from foreign_option_1
+            DNS_SERVER=$(echo "$foreign_option_1" | sed 's/dhcp-option DNS //')
+            if [ -n "$DNS_SERVER" ]; then
+                echo "nameserver $DNS_SERVER" > /etc/resolv.conf
+                echo "# OpenVPN DNS - $DNS_SERVER" >> /etc/resolv.conf
+            fi
+        fi
+        ;;
+    down)
+        echo "Restoring original DNS..."
+        if [ -f /etc/resolv.conf.openvpn.backup ]; then
+            mv /etc/resolv.conf.openvpn.backup /etc/resolv.conf
+        fi
+        ;;
+esac
+EOFSCRIPT
+            chmod +x /etc/openvpn/update-resolv-conf
+        fi
+        
+        # Ensure PolicyKit is properly configured
+        if command -v systemctl &> /dev/null; then
+            systemctl reload polkit.service || true
+        fi
+        
+        # Update desktop database
+        if command -v update-desktop-database &> /dev/null; then
+            update-desktop-database /usr/share/applications || true
+        fi
+        
+        # Update icon cache
+        if command -v gtk-update-icon-cache &> /dev/null; then
+            gtk-update-icon-cache -f /usr/share/pixmaps || true
+        fi
+        
+        echo ""
+        echo "🎉 OpenVPN Manager (Self-Contained) installation completed!"
+        echo "📦 All Python dependencies included in package"
+        echo "🚀 Launch with: openvpn-manager-launcher"
+        echo "🖥️  Or find 'OpenVPN Manager' in your applications menu"
+        echo ""
+        
+        # Run dependency checker if available
+        if [ -f "/usr/share/openvpn-manager/check-deps.py" ]; then
+            log_msg "Running post-installation dependency check..."
+            python3 /usr/share/openvpn-manager/check-deps.py || {
+                log_msg "⚠️  Dependency check reported issues"
+            }
+        fi
+        
+        log_msg "Installation completed!"
+        ;;
+esac
+
+
+
+exit 0

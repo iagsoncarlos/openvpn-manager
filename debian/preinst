@@ -1,0 +1,45 @@
+#!/bin/bash
+
+set -e
+
+case "$1" in
+    install|upgrade)
+        echo "Preparing OpenVPN Manager installation..."
+        
+        # Update package cache
+        echo "Updating package cache..."
+        apt-get update -qq || {
+            echo "Warning: Could not update package cache. Installation may fail."
+        }
+        
+        # Check if essential packages are available
+        MISSING_PACKAGES=""
+        
+        if ! apt-cache show python3-pyqt6 &>/dev/null; then
+            echo "Warning: python3-pyqt6 not available in repositories."
+            echo "PyQt6 will be installed via pip during configuration."
+        fi
+        
+        if ! apt-cache show zenity &>/dev/null && ! apt-cache show kdialog &>/dev/null; then
+            MISSING_PACKAGES="$MISSING_PACKAGES zenity"
+        fi
+        
+        if [ -n "$MISSING_PACKAGES" ]; then
+            echo "Warning: Some optional packages are not available: $MISSING_PACKAGES"
+            echo "The application may have limited functionality."
+        fi
+        
+        # Ensure Python 3.10+ is available
+        PYTHON_VERSION=$(python3 --version 2>&1 | cut -d' ' -f2 | cut -d'.' -f1,2)
+        if [ "$(echo "$PYTHON_VERSION 3.10" | awk '{print ($1 >= $2)}')" != "1" ]; then
+            echo "Error: Python 3.10 or higher is required. Found: $PYTHON_VERSION"
+            exit 1
+        fi
+        
+        echo "Pre-installation checks completed."
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

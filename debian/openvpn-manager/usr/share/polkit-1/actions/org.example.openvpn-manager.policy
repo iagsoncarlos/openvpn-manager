@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>OpenVPN Manager</vendor>
+  <vendor_url>https://github.com/iagsoncarlos/openvpn-manager</vendor_url>
+  
+  <action id="org.example.openvpn-manager.run-openvpn">
+    <description>Run OpenVPN with administrator privileges</description>
+    <description xml:lang="pt_BR">Executar OpenVPN com privilégios administrativos</description>
+    <message>Authentication is required to manage VPN connections</message>
+    <message xml:lang="pt_BR">Autenticação é necessária para gerenciar conexões VPN</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/sbin/openvpn</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+  
+  <action id="org.example.openvpn-manager.modify-resolv-conf">
+    <description>Modify DNS resolution configuration</description>
+    <description xml:lang="pt_BR">Modificar configuração de resolução DNS</description>
+    <message>Authentication is required to modify DNS settings</message>
+    <message xml:lang="pt_BR">Autenticação é necessária para modificar configurações DNS</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+  </action>
+  
+  <action id="org.example.openvpn-manager.kill-openvpn">
+    <description>Stop OpenVPN processes</description>
+    <description xml:lang="pt_BR">Parar processos OpenVPN</description>
+    <message>Authentication is required to stop VPN connections</message>
+    <message xml:lang="pt_BR">Autenticação é necessária para parar conexões VPN</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/pkill</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+</policyconfig>

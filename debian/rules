@@ -1,0 +1,30 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@ --with python3 --buildsystem=pybuild
+
+override_dh_auto_install:
+	dh_auto_install
+	# Install launcher script
+	mkdir -p debian/openvpn-manager/usr/bin
+	cp openvpn-manager-launcher.sh debian/openvpn-manager/usr/bin/openvpn-manager-launcher
+	# Install desktop file
+	mkdir -p debian/openvpn-manager/usr/share/applications
+	cp debian/openvpn-manager.desktop debian/openvpn-manager/usr/share/applications/
+	# Install icon
+	mkdir -p debian/openvpn-manager/usr/share/pixmaps
+	cp resources/vpn.png debian/openvpn-manager/usr/share/pixmaps/openvpn-manager.png
+	# Install polkit policy
+	mkdir -p debian/openvpn-manager/usr/share/polkit-1/actions
+	cp debian/org.example.openvpn-manager.policy debian/openvpn-manager/usr/share/polkit-1/actions/
+	# Install Qt diagnostics script
+	mkdir -p debian/openvpn-manager/usr/share/openvpn-manager
+	cp debian/openvpn-manager-diagnostics.sh debian/openvpn-manager/usr/share/openvpn-manager/
+
+override_dh_fixperms:
+	dh_fixperms
+	# Set proper permissions for scripts
+	chmod 755 debian/openvpn-manager/usr/bin/openvpn-manager
+	chmod 755 debian/openvpn-manager/usr/bin/openvpn-manager-launcher
+	# Set permissions for diagnostics script
+	chmod 755 debian/openvpn-manager/usr/share/openvpn-manager/openvpn-manager-diagnostics.sh

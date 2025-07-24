@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=OpenVPN Manager
+Name[pt_BR]=Gerenciador OpenVPN
+Comment=Manage OpenVPN connections
+Comment[pt_BR]=Gerenciar conexões OpenVPN
+Exec=openvpn-manager-launcher
+Icon=openvpn-manager
+Terminal=false
+Type=Application
+Categories=Network;
+StartupNotify=true
+Keywords=VPN;OpenVPN;Network;Security;
+Keywords[pt_BR]=VPN;OpenVPN;Rede;Segurança;

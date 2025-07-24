@@ -1,0 +1,24 @@
+include README.md
+include README-DEV.md
+include CONTRIBUTING.md
+include CHANGELOG.md
+include LICENSE
+include VERSION
+include pyproject.toml
+include setup.py
+include main.py
+include config.py
+include version.sh
+include build.sh
+include install-dev.sh
+include uninstall.sh
+include openvpn-manager-launcher.sh
+include VERSIONING-GUIDE.md
+include PROJECT-STRUCTURE.md
+recursive-include resources *
+recursive-include debian *
+global-exclude *.pyc
+global-exclude __pycache__
+global-exclude .git*
+global-exclude build-enhanced
+global-exclude *.backup

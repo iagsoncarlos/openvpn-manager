@@ -1,0 +1,22 @@
+Metadata-Version: 2.1
+Name: openvpn-manager
+Version: 0.2.1
+Summary: A PyQt6-based OpenVPN connection manager
+Home-page: https://github.com/iagsoncarlos/openvpn-manager
+Author: Iágson Carlos Lima Silva
+Author-email: iagsoncarlos@gmail.com
+License: UNKNOWN
+Platform: UNKNOWN
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: End Users/Desktop
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Operating System :: POSIX :: Linux
+Classifier: Topic :: System :: Networking
+Requires-Python: >=3.10
+
+UNKNOWN
+
