@@ -6,6 +6,7 @@ A professional PyQt6-based OpenVPN connection manager for Linux systems with adv
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![PyQt6](https://img.shields.io/badge/PyQt6-6.4%2B-green.svg)](https://www.riverbankcomputing.com/software/pyqt/)
 [![Development Status](https://img.shields.io/badge/status-alpha-orange.svg)](https://github.com/iagsoncarlos/openvpn-manager)
+[![Latest Release](https://img.shields.io/github/v/release/iagsoncarlos/openvpn-manager)](https://github.com/iagsoncarlos/openvpn-manager/releases/latest)
 
 ## Overview
 
@@ -34,15 +35,18 @@ OpenVPN Manager is a comprehensive GUI application designed to simplify OpenVPN 
 
 ### Quick Installation (Recommended)
 
-Download and install the latest .deb package:
 
 ```bash
 # Download the latest release
-wget https://github.com/iagsoncarlos/openvpn-manager/releases/latest/download/openvpn-manager_0.2.0_all.deb
+wget "$(curl -s https://api.github.com/repos/iagsoncarlos/openvpn-manager/releases/latest | grep 'browser_download_url.*\.deb' | head -n 1 | cut -d '"' -f 4)" -O openvpn-manager_v_latest.deb
+```
 
+```bash
 # Install the package
-sudo dpkg -i openvpn-manager_0.2.0_all.deb
+sudo dpkg -i openvpn-manager_v_latest.deb
+```
 
+```bash
 # Fix any dependency issues if needed
 sudo apt-get install -f
 ```
