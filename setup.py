@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 from setuptools import setup, find_packages
-from config import (
-    APP_NAME, APP_VERSION, APP_DESCRIPTION, ORGANIZATION_NAME, 
-    ORGANIZATION_EMAIL, APP_URL, REQUIRED_PACKAGES, PYTHON_REQUIRES
-)
 import os
+
+# Read version from VERSION file
+def get_version():
+    with open('VERSION', 'r') as f:
+        return f.read().strip()
 
 # Find all wheel files
 wheels_dir = 'build-enhanced/wheels'
@@ -13,12 +14,12 @@ if os.path.exists(wheels_dir):
     wheel_files = [f for f in os.listdir(wheels_dir) if f.endswith('.whl')]
 
 setup(
-    name=APP_NAME.lower().replace(" ", "-"),
-    version=APP_VERSION,
-    description=APP_DESCRIPTION,
-    author=ORGANIZATION_NAME,
-    author_email=ORGANIZATION_EMAIL,
-    url=APP_URL,
+    name="openvpn-manager",
+    version=get_version(),
+    description="A PyQt6-based OpenVPN connection manager",
+    author="Iágson Carlos Lima Silva",
+    author_email="iagsoncarlos@gmail.com",
+    url="https://github.com/iagsoncarlos/openvpn-manager",
     py_modules=["main", "config"],
     install_requires=[],  # No external dependencies
     entry_points={
@@ -43,5 +44,5 @@ setup(
         "Operating System :: POSIX :: Linux",
         "Topic :: System :: Networking",
     ],
-    python_requires=PYTHON_REQUIRES,
+    python_requires=">=3.10",
 )
