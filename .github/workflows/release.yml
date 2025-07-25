@@ -1,11 +1,10 @@
-
 name: Create Release
 
 on:
   workflow_dispatch:
     inputs:
       version_type:
-        description: 'Version increment type'
+        description: 'Tipo de incremento de versão'
         required: true
         default: 'patch'
         type: choice
@@ -14,11 +13,11 @@ on:
           - minor
           - major
       custom_version:
-        description: 'Custom version (optional, overrides version_type)'
+        description: 'Versão personalizada (opcional, sobrescreve version_type)'
         required: false
         type: string
       prerelease:
-        description: 'Mark as pre-release'
+        description: 'Marcar como pré-lançamento'
         required: false
         default: false
         type: boolean
@@ -145,6 +144,19 @@ jobs:
         else
           ./version.sh "${{ inputs.version_type }}"
         fi
+
+    # --- NOVA ETAPA ADICIONADA AQUI ---
+    - name: Update Debian Changelog with new version
+      run: |
+        NEW_VERSION="${{ steps.new_version.outputs.version }}"
+        CURRENT_DATE=$(date -R) # Formato RFC 2822 necessário pelo dch
+        
+        # O comando dch atualiza o debian/changelog.
+        # Substitua 'GitHub Action <action@github.com>' pelo seu nome/e-mail de mantenedor se preferir.
+        dch -b --changelog debian/changelog --newversion "${NEW_VERSION}" "Automated release build."
+        echo "Conteúdo de debian/changelog após atualização:"
+        cat debian/changelog
+    # -----------------------------------
 
     - name: Update CHANGELOG.md
       run: |
