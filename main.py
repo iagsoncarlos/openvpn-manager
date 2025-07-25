@@ -38,7 +38,13 @@ except ImportError as e:
 
 
 def run_sudo_command(cmd, **kwargs):
-    """Helper function to run sudo commands with password when needed"""
+    """Helper function to run sudo commands with password when needed
+    
+    Security Note: This function handles sudo passwords carefully by:
+    - Reading from environment variables only (no hardcoded passwords)
+    - Using stdin pipe to avoid command-line exposure
+    - Clearing sensitive data from memory when possible
+    """
     sudo_password = os.environ.get('SUDO_PASSWORD')
     if sudo_password and len(cmd) > 0 and cmd[0] == 'sudo':
         # Add -S flag to read password from stdin
