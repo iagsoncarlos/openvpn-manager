@@ -1,39 +1,58 @@
 #!/bin/bash
-set -e
+set -eo pipefail # Added 'o pipefail' for safer script execution
 
 # Self-contained .deb builder for OpenVPN Manager
 # 1. Downloads dependency wheels
-# 2. Copies them to the package folder
-# 3. Generates the .deb with everything included
+# 2. Prepares the Debian package staging area with wheels
+# 3. Generates the .deb package with all components included
 
+# --- Configuration ---
 VERSION=$(cat VERSION)
+PROJECT_NAME="openvpn-manager" # Define project name for clarity
 BUILD_DIR="dist"
-WHEELS_DIR="$BUILD_DIR/wheels"
+WHEELS_SUBDIR="wheels" # Subdirectory within BUILD_DIR for downloaded wheels
+DEB_STAGING_WHEELS_DIR="debian/$PROJECT_NAME/usr/share/$PROJECT_NAME/wheels"
 
-# Clean up and prepare
-rm -rf "$BUILD_DIR/wheels"
-mkdir -p "$WHEELS_DIR"
+# --- Setup and Cleanup ---
+echo "⚙️  Preparing build environment..."
+# Clean up previous build artifacts in 'dist'
+rm -rf "$BUILD_DIR"
+mkdir -p "$BUILD_DIR/$WHEELS_SUBDIR" # Create directory for downloaded wheels
 
-# Download dependencies as wheels
-pip3 download --dest "$WHEELS_DIR" --prefer-binary PyQt6>=6.4.0
+# --- Download Python Dependencies (Wheels) ---
+echo "⬇️  Downloading PyQt6 dependencies..."
+pip3 download --dest "$BUILD_DIR/$WHEELS_SUBDIR" --prefer-binary "PyQt6>=6.4.0"
 
-# Copy wheels to the package location
-mkdir -p debian/openvpn-manager/usr/share/openvpn-manager/wheels
-cp $WHEELS_DIR/*.whl debian/openvpn-manager/usr/share/openvpn-manager/wheels/
+# --- Copy Wheels to Debian Staging Area ---
+# Ensure the target directory for wheels exists within the Debian staging area
+echo "📦 Copying wheels to Debian package staging directory: $DEB_STAGING_WHEELS_DIR"
+mkdir -p "$DEB_STAGING_WHEELS_DIR"
+cp "$BUILD_DIR/$WHEELS_SUBDIR"/*.whl "$DEB_STAGING_WHEELS_DIR/"
 
-# Generate the .deb normally
-# (uses the standard debian/rules, which already installs wheels and scripts)
+# --- Build Debian Package ---
+echo "🏗️  Building .deb package for $PROJECT_NAME version $VERSION..."
+# dpkg-buildpackage uses debian/rules to define the build process.
+# We explicitly specify the project name to avoid ambiguity.
 dpkg-buildpackage -b -uc -us
 
-# Clean up temporary wheels from the package directory (optional)
-rm -rf debian/openvpn-manager/usr/share/openvpn-manager/wheels/*
+# --- Post-Build Cleanup and Packaging ---
+echo "🧹 Cleaning up and moving final .deb package..."
 
-# Move the .deb to dist/ for CI/CD workflows
-DEB_FILE=$(find .. -maxdepth 1 -name "openvpn-manager_${VERSION}-1_all.deb" | sort -V | tail -n1)
+# Find the generated .deb file. Using find with -maxdepth 1 to limit search
+# and a more specific name pattern for robustness.
+DEB_FILE=$(find .. -maxdepth 1 -name "${PROJECT_NAME}_${VERSION}-*.deb" | sort -V | tail -n1)
 
-if [ -f "$DEB_FILE" ]; then
-    mv "$DEB_FILE" "$BUILD_DIR/" || true
-    echo -e "\n✅ Self-contained .deb generated! See $BUILD_DIR/$(basename "$DEB_FILE")"
+if [[ -f "$DEB_FILE" ]]; then
+    mkdir -p "$BUILD_DIR" # Ensure dist directory exists if it was removed earlier
+    mv "$DEB_FILE" "$BUILD_DIR/"
+    echo -e "\n✅ Self-contained .deb generated successfully! Find it at: $BUILD_DIR/$(basename "$DEB_FILE")"
 else
-    echo -e "\n❌ .deb file not found after build!"
+    echo -e "\n❌ Error: .deb file not found after build!"
+    exit 1 # Exit with an error code if the .deb is not found
 fi
+
+# Optional: Clean up downloaded wheels from the temporary 'dist/wheels' directory
+echo "🧹 Cleaning up temporary downloaded wheels..."
+rm -rf "$BUILD_DIR/$WHEELS_SUBDIR"
+
+echo "🎉 Build process finished."

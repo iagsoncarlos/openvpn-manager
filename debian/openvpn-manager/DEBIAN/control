@@ -1,8 +1,8 @@
 Package: openvpn-manager
-Version: 0.2.4-1
+Version: 0.2.5-1
 Architecture: all
 Maintainer: Iágson Carlos Lima Silva <iagsoncarlos@gmail.com>
-Installed-Size: 112
+Installed-Size: 81049
 Depends: python3:any, python3 (>= 3.10), python3-pyqt6, openvpn, resolvconf | systemd-resolved, policykit-1, zenity | kdialog, sudo, procps, iproute2 | net-tools, iputils-ping, libxcb-cursor0, libxcb-xinerama0, libxcb-icccm4, libxcb-image0, libxcb-keysyms1, libxcb-randr0, libxcb-render-util0, libxcb-shape0, libxcb-sync1, libxcb-xfixes0, libqt6core6, libqt6widgets6, libqt6gui6
 Recommends: network-manager-openvpn, network-manager-openvpn-gnome
 Suggests: openvpn-systemd-resolved
