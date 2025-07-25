@@ -114,6 +114,18 @@ jobs:
           fi
         fi
         
+        # Check if tag already exists and increment patch if needed
+        if git rev-parse "v$NEW_VERSION" >/dev/null 2>&1; then
+          echo "Tag v$NEW_VERSION already exists. Incrementing patch version..."
+          IFS='.' read -ra VERSION_PARTS <<< "$NEW_VERSION"
+          MAJOR=${VERSION_PARTS[0]}
+          MINOR=${VERSION_PARTS[1]}
+          PATCH=${VERSION_PARTS[2]}
+          PATCH=$((PATCH + 1))
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          echo "Using new version: $NEW_VERSION"
+        fi
+
         echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
         echo "New version will be: $NEW_VERSION"
 
