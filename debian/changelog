@@ -1,12 +1,12 @@
-openvpn-manager (0.2.0-1) unstable; urgency=medium
+openvpn-manager (0.2.2-1) unstable; urgency=medium
 
-  * Professional English interface throughout application
-  * Dynamic version management system with version.sh
-  * Automated build system with Qt XCB compatibility fixes
-  * Comprehensive development environment setup
-  * Complete uninstaller with optional cleanup
-  * Professional documentation structure
-  * Enhanced .deb packaging with bundled dependencies
-  * MIT License for open source distribution
+  * Self-contained package with bundled Python dependencies
+  * Includes PyQt6 wheels within the .deb package
+  * No internet connection required during installation
+  * Enhanced postinst script with dependency verification
+  * Improved DNS update script with better error handling
+  * Complete offline installation capability
+  * Automatic fallback to internet installation if wheels fail
 
- -- Iágson Carlos Lima Silva <iagsoncarlos@gmail.com>  Wed, 24 Jul 2025 00:00:00 +0000
+ -- Iágson Carlos Lima Silva <iagsoncarlos@gmail.com>  Fri, 25 Jul 2025 00:39:26 +0000
+

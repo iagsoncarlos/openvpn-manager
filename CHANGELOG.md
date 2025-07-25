@@ -13,7 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Configuration backup and restore
 - Advanced logging and diagnostics
 
-## [0.2.0] - 2025-07-24
+## [0.2.2] - 2025-07-25
+
+### Added
+- Automated release via GitHub Actions
+
+### Changed
+- Version bumped to 0.2.2
+
+### Fixed
+- Minor bug fixes and improvements
 
 ### Added
 - Professional English interface throughout application
