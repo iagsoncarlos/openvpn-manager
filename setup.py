@@ -22,12 +22,6 @@ REQUIRED_PACKAGES = [
     "PyQt6>=6.4.0",
 ]
 
-# Find all wheel files
-wheels_dir = 'build-enhanced/wheels'
-wheel_files = []
-if os.path.exists(wheels_dir):
-    wheel_files = [f for f in os.listdir(wheels_dir) if f.endswith('.whl')]
-
 setup(
     name=APP_NAME,
     version=APP_VERSION,
@@ -36,7 +30,7 @@ setup(
     author_email=ORGANIZATION_EMAIL,
     url=APP_URL,
     py_modules=["main", "config"],
-    install_requires=[],  # No external dependencies
+    install_requires=REQUIRED_PACKAGES,  # Include PyQt6 dependency
     entry_points={
         "console_scripts": [
             "openvpn-manager=main:main",
@@ -46,7 +40,6 @@ setup(
         ("share/applications", ["debian/openvpn-manager.desktop"]),
         ("share/pixmaps", ["resources/vpn.png"]),
         ("share/polkit-1/actions", ["debian/org.example.openvpn-manager.policy"]),
-        ("share/openvpn-manager/wheels", [f"build-enhanced/wheels/{whl}" for whl in wheel_files]),
     ],
     classifiers=[
         "Development Status :: 3 - Alpha",

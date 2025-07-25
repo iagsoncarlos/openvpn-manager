@@ -182,7 +182,13 @@ jobs:
 
     - name: Commit version changes
       run: |
-        git add -A
+        # Only commit version-related files, not build artifacts
+        git add VERSION config.py pyproject.toml setup.py CHANGELOG.md
+        if [ -f "debian/changelog" ]; then
+          git add debian/changelog
+        fi
+        # Explicitly exclude large build artifacts
+        git reset HEAD dist/ build/ build-enhanced/ *.egg-info/ debian/*.backup || true
         git commit -m "chore: bump version to ${{ steps.new_version.outputs.version }}"
         git push
 

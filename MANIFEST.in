@@ -16,9 +16,19 @@ include openvpn-manager-launcher.sh
 include VERSIONING-GUIDE.md
 include PROJECT-STRUCTURE.md
 recursive-include resources *
-recursive-include debian *
+include debian/changelog
+include debian/control
+include debian/rules
+include debian/postinst
+include debian/preinst
+include debian/openvpn-manager.desktop
+include debian/org.example.openvpn-manager.policy
+include debian/openvpn-manager-diagnostics.sh
 global-exclude *.pyc
 global-exclude __pycache__
 global-exclude .git*
 global-exclude build-enhanced
 global-exclude *.backup
+global-exclude *.whl
+global-exclude dist/
+global-exclude build/
