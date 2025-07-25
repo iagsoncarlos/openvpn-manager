@@ -166,14 +166,12 @@ jobs:
         tail -n +18 CHANGELOG.md.bak >> CHANGELOG.md
         rm CHANGELOG.md.bak
 
-    - name: Build .deb package
+    - name: Build self-contained .deb package
       run: |
-        echo "🔨 Building .deb package..."
-        
-        # Build Debian package directly
-        dpkg-buildpackage -b -uc -us
-        
-        # Verify .deb was created
+        echo "🔨 Building self-contained .deb package..."
+        chmod +x ./build.sh
+        ./build.sh
+        # Verifica se o .deb foi criado
         DEB_FILE=$(find .. -name "openvpn-manager_*.deb" -type f | head -1)
         if [ -n "$DEB_FILE" ]; then
           echo "✅ .deb package created: $DEB_FILE"
