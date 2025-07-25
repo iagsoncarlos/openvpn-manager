@@ -6,7 +6,7 @@ Contains application metadata and version information
 
 # Application Information
 APP_NAME = "OpenVPN Manager"
-APP_VERSION = "0.2.4"
+APP_VERSION = "0.2.5"
 ORGANIZATION_NAME = "Iágson Carlos Lima Silva"
 ORGANIZATION_EMAIL = "iagsoncarlos@gmail.com"
 
