@@ -46,7 +46,8 @@ jobs:
       run: |
         # Install Debian build dependencies
         sudo apt-get update
-        sudo apt-get install -y build-essential debhelper dh-python python3-all python3-setuptools python3-dev
+        sudo apt-get install -y build-essential debhelper dh-python python3-all python3-setuptools python3-dev \
+          dpkg-dev devscripts fakeroot lintian
         
         # Install Python dependencies
         python -m pip install --upgrade pip
@@ -168,12 +169,24 @@ jobs:
       run: |
         chmod +x ./build.sh
         
-        # Try to build with the custom build script
+        # Build with detailed error checking
+        echo "🔨 Starting package build..."
         if ./build.sh; then
           echo "✅ Custom build successful"
+          # Verify .deb was created
+          DEB_FILE=$(find .. -name "openvpn-manager_*.deb" -type f | head -1)
+          if [ -n "$DEB_FILE" ]; then
+            echo "✅ .deb package created: $DEB_FILE"
+            ls -la "$DEB_FILE"
+          else
+            echo "❌ .deb package not found after build!"
+            exit 1
+          fi
         else
-          echo "⚠️ Custom build failed, creating basic Python packages only"
-          echo "This is normal in CI environments that don't have all Debian dependencies"
+          echo "❌ Custom build failed with exit code $?"
+          echo "Build log:"
+          ls -la ../
+          exit 1
         fi
 
     - name: Create source distribution
@@ -224,11 +237,18 @@ jobs:
     - name: Find build artifacts
       id: artifacts
       run: |
-        # Find the .deb file
-        DEB_FILE=$(find . -name "*.deb" -type f | head -1)
+        # Find the .deb file in parent directory
+        DEB_FILE=$(find .. -name "openvpn-manager_*.deb" -type f | head -1)
         if [ -n "$DEB_FILE" ]; then
-          echo "deb_file=$DEB_FILE" >> $GITHUB_OUTPUT
-          echo "Found .deb file: $DEB_FILE"
+          # Convert to relative path for GitHub Actions
+          DEB_REL_PATH=$(realpath --relative-to=. "$DEB_FILE")
+          echo "deb_file=$DEB_REL_PATH" >> $GITHUB_OUTPUT
+          echo "Found .deb file: $DEB_REL_PATH"
+          echo "Size: $(du -sh "$DEB_FILE" | cut -f1)"
+        else
+          echo "❌ No .deb file found!"
+          echo "Available files in parent directory:"
+          ls -la ../
         fi
         
         # Find wheel files
@@ -261,15 +281,12 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Upload to PyPI (optional)
-      if: ${{ !inputs.prerelease }}
+      if: false  # Disabled for now
       run: |
         # Uncomment and configure if you want to publish to PyPI
         # echo "To publish to PyPI, configure PYPI_API_TOKEN secret and uncomment:"
         # echo "twine upload dist/*"
         echo "PyPI upload skipped (not configured)"
-      env:
-        TWINE_USERNAME: __token__
-        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
 
     - name: Create deployment summary
       run: |
