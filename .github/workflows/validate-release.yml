@@ -37,7 +37,7 @@ jobs:
         
         # Check config.py
         if [ -f "config.py" ]; then
-          CONFIG_VERSION=$(grep "APP_VERSION" config.py | cut -d'"' -f2)
+          CONFIG_VERSION=$(grep "^APP_VERSION" config.py | cut -d'"' -f2)
           echo "config.py: $CONFIG_VERSION"
           if [ "$VERSION_FILE" != "$CONFIG_VERSION" ]; then
             echo "❌ Version mismatch in config.py"
@@ -57,10 +57,12 @@ jobs:
         
         # Check setup.py
         if [ -f "setup.py" ]; then
-          SETUP_VERSION=$(grep "version=" setup.py | cut -d'"' -f2)
-          echo "setup.py: $SETUP_VERSION"
-          if [ "$VERSION_FILE" != "$SETUP_VERSION" ]; then
-            echo "❌ Version mismatch in setup.py"
+          # setup.py gets version from get_version() function which reads VERSION file
+          # So we just need to check that it imports and uses APP_VERSION correctly
+          if grep -q "version=APP_VERSION" setup.py && grep -q "get_version()" setup.py; then
+            echo "setup.py: uses get_version() function (correct)"
+          else
+            echo "❌ setup.py doesn't use get_version() function properly"
             exit 1
           fi
         fi
