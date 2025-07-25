@@ -166,14 +166,12 @@ jobs:
         tail -n +18 CHANGELOG.md.bak >> CHANGELOG.md
         rm CHANGELOG.md.bak
 
-    - name: Build .deb package
+    - name: Build self-contained .deb package
       run: |
-        echo "🔨 Building .deb package..."
-        
-        # Build Debian package directly
-        dpkg-buildpackage -b -uc -us
-        
-        # Verify .deb was created
+        echo "🔨 Building self-contained .deb package..."
+        chmod +x ./build.sh
+        ./build.sh
+        # Verifica se o .deb foi criado
         DEB_FILE=$(find .. -name "openvpn-manager_*.deb" -type f | head -1)
         if [ -n "$DEB_FILE" ]; then
           echo "✅ .deb package created: $DEB_FILE"
@@ -259,8 +257,8 @@ jobs:
     - name: Find build artifacts
       id: artifacts
       run: |
-        # Find the .deb file in parent directory
-        DEB_FILE=$(find .. -name "openvpn-manager_*.deb" -type f | head -1)
+        # Find the .deb file in dist directory
+        DEB_FILE=$(find dist/ -name "openvpn-manager_*.deb" -type f | head -1)
         if [ -n "$DEB_FILE" ]; then
           # Convert to relative path for GitHub Actions
           DEB_REL_PATH=$(realpath --relative-to=. "$DEB_FILE")
@@ -269,8 +267,8 @@ jobs:
           echo "Size: $(du -sh "$DEB_FILE" | cut -f1)"
         else
           echo "❌ No .deb file found!"
-          echo "Available files in parent directory:"
-          ls -la ../
+          echo "Available files in dist directory:"
+          ls -la dist/
         fi
         
         # Find wheel files
