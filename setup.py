@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from setuptools import setup, find_packages
+from setuptools import setup
 import os
 
 # Read version from VERSION file
@@ -17,11 +17,12 @@ setup(
     name="openvpn-manager",
     version=get_version(),
     description="A PyQt6-based OpenVPN connection manager",
+    long_description="OpenVPN Manager with bundled dependencies for offline installation.",
     author="Iágson Carlos Lima Silva",
     author_email="iagsoncarlos@gmail.com",
     url="https://github.com/iagsoncarlos/openvpn-manager",
     py_modules=["main", "config"],
-    install_requires=[],  # No external dependencies
+    install_requires=[],  # No external dependencies for .deb build
     entry_points={
         "console_scripts": [
             "openvpn-manager=main:main",
@@ -39,10 +40,11 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.11", 
         "Programming Language :: Python :: 3.12",
         "Operating System :: POSIX :: Linux",
         "Topic :: System :: Networking",
     ],
     python_requires=">=3.10",
+    license="MIT",
 )
