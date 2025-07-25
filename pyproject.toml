@@ -10,7 +10,8 @@ dependencies = [
 authors = [
     {name = "Iágson Carlos Lima Silva", email = "iagsoncarlos@gmail.com"}
 ]
-license = "MIT"
+license = {text = "MIT"}
+license-files = ["LICENSE"]
 keywords = ["vpn", "openvpn", "gui", "manager"]
 classifiers = [
     "Development Status :: 3 - Alpha",
