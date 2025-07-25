@@ -41,15 +41,20 @@ pip3 download --dest "$WHEELS_DIR" --prefer-binary PyQt6>=6.4.0
 echo " Downloaded wheels:"
 ls -la "$WHEELS_DIR"
 
-# Create enhanced setup.py that includes wheels
-cat > "$BUILD_DIR/setup-enhanced.py" << 'EOF'
+# Create enhanced setup.py that includes wheels (standalone version)
+cat > "$BUILD_DIR/setup-enhanced.py" << EOF
 #!/usr/bin/env python3
-from setuptools import setup, find_packages
-from config import (
-    APP_NAME, APP_VERSION, APP_DESCRIPTION, ORGANIZATION_NAME, 
-    ORGANIZATION_EMAIL, APP_URL, REQUIRED_PACKAGES, PYTHON_REQUIRES
-)
+from setuptools import setup
 import os
+
+# Hardcoded values for enhanced build - no imports from config module
+APP_NAME = "openvpn-manager"
+APP_VERSION = "$CURRENT_VERSION"
+APP_DESCRIPTION = "A PyQt6-based OpenVPN connection manager"
+ORGANIZATION_NAME = "Iágson Carlos Lima Silva"
+ORGANIZATION_EMAIL = "iagsoncarlos@gmail.com"
+APP_URL = "https://github.com/iagsoncarlos/openvpn-manager"
+PYTHON_REQUIRES = ">=3.10"
 
 # Find all wheel files
 wheels_dir = 'build-enhanced/wheels'
@@ -58,7 +63,7 @@ if os.path.exists(wheels_dir):
     wheel_files = [f for f in os.listdir(wheels_dir) if f.endswith('.whl')]
 
 setup(
-    name=APP_NAME.lower().replace(" ", "-"),
+    name=APP_NAME,
     version=APP_VERSION,
     description=APP_DESCRIPTION,
     author=ORGANIZATION_NAME,

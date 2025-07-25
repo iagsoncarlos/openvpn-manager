@@ -1,18 +1,18 @@
 Package: openvpn-manager
-Version: 0.2.1-1
+Version: 0.2.2-1
 Architecture: all
 Maintainer: Iágson Carlos Lima Silva <iagsoncarlos@gmail.com>
-Installed-Size: 81089
-Depends: python3 (>= 3.10), python3-pip, openvpn, resolvconf | systemd-resolved, policykit-1, zenity | kdialog, sudo, procps, iproute2 | net-tools, iputils-ping
+Installed-Size: 112
+Depends: python3:any, python3 (>= 3.10), python3-pyqt6, openvpn, resolvconf | systemd-resolved, policykit-1, zenity | kdialog, sudo, procps, iproute2 | net-tools, iputils-ping, libxcb-cursor0, libxcb-xinerama0, libxcb-icccm4, libxcb-image0, libxcb-keysyms1, libxcb-randr0, libxcb-render-util0, libxcb-shape0, libxcb-sync1, libxcb-xfixes0, libqt6core6, libqt6widgets6, libqt6gui6
 Recommends: network-manager-openvpn, network-manager-openvpn-gnome
 Suggests: openvpn-systemd-resolved
 Section: net
 Priority: optional
 Homepage: https://github.com/iagsoncarlos/openvpn-manager
-Description: An OpenVPN connection manager
- OpenVPN Manager with all Python dependencies bundled within the package.
- This version includes PyQt6 wheels and installs them automatically during
- package configuration, ensuring a completely self-contained installation.
+Description: PyQt6-based OpenVPN connection manager
+ OpenVPN Manager is a graphical user interface for managing OpenVPN
+ connections. It provides an easy-to-use interface for connecting to
+ and managing VPN configurations with proper privilege management.
  .
  Features include:
   - Load and manage OpenVPN configuration files (.ovpn)
@@ -22,7 +22,6 @@ Description: An OpenVPN connection manager
   - Desktop integration with application menu
   - Automatic DNS resolution management
   - Support for both terminal and GUI authentication
-  - Bundled PyQt6 dependencies (no internet required)
  .
- This package includes all necessary Python dependencies and requires
- no external package downloads during installation.
+ This package includes all necessary dependencies for a complete
+ OpenVPN management experience on Ubuntu/Debian systems.
