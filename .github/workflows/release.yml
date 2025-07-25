@@ -226,8 +226,18 @@ jobs:
 
     - name: Create Git tag
       run: |
-        git tag -a "v${{ steps.new_version.outputs.version }}" -m "Release v${{ steps.new_version.outputs.version }}"
-        git push origin "v${{ steps.new_version.outputs.version }}"
+        NEW_VERSION="${{ steps.new_version.outputs.version }}"
+        
+        # Create and push tag regardless of previous push success
+        git tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION"
+        
+        # Try to push tag, but don't fail if it doesn't work
+        if git push origin "v$NEW_VERSION"; then
+          echo "✅ Tag pushed successfully"
+        else
+          echo "⚠️ Failed to push tag, but continuing with release creation"
+          echo "Tag will be created locally and release will still be made"
+        fi
 
     - name: Extract changelog for release
       id: changelog
