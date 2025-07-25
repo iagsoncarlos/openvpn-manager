@@ -2,7 +2,7 @@
 from setuptools import setup
 import os
 
-# Hardcoded version - will be updated by version.sh
+# Hardcoded version - will be updated by version.sh - FIXED
 VERSION = "0.2.3"
 
 # Find all wheel files (only for .deb builds)
