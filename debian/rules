@@ -20,6 +20,9 @@ override_dh_auto_install:
 	# Install Qt diagnostics script
 	mkdir -p debian/openvpn-manager/usr/share/openvpn-manager
 	cp debian/openvpn-manager-diagnostics.sh debian/openvpn-manager/usr/share/openvpn-manager/
+	# Include wheels
+	mkdir -p debian/openvpn-manager/usr/share/openvpn-manager/wheels/
+	cp $(CURDIR)/dist/wheels/*.whl debian/openvpn-manager/usr/share/openvpn-manager/wheels/
 
 override_dh_fixperms:
 	dh_fixperms
