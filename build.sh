@@ -322,7 +322,16 @@ echo " Setting up enhanced build configuration..."
 cp debian/control debian/control.backup
 cp debian/postinst debian/postinst.backup
 cp debian/rules debian/rules.backup
-cp debian/changelog debian/changelog.backup
+if [ -f debian/changelog ]; then
+    cp debian/changelog debian/changelog.backup
+else
+    echo " Warning: debian/changelog not found, creating minimal one..."
+    echo "openvpn-manager ($CURRENT_VERSION-1) unstable; urgency=medium" > debian/changelog
+    echo "" >> debian/changelog
+    echo "  * Version $CURRENT_VERSION" >> debian/changelog
+    echo "" >> debian/changelog
+    echo " -- Iágson Carlos Lima Silva <iagsoncarlos@gmail.com>  $(date -R)" >> debian/changelog
+fi
 
 cp "$BUILD_DIR/control-enhanced" debian/control
 cp "$BUILD_DIR/postinst-enhanced" debian/postinst
@@ -340,7 +349,9 @@ echo " Restoring original configuration files..."
 mv debian/control.backup debian/control
 mv debian/postinst.backup debian/postinst
 mv debian/rules.backup debian/rules
-mv debian/changelog.backup debian/changelog
+if [ -f debian/changelog.backup ]; then
+    mv debian/changelog.backup debian/changelog
+fi
 
 echo ""
 echo " Self-contained package build completed!"
