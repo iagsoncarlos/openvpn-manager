@@ -7,11 +7,11 @@ set -e
 # 3. Gera o .deb com tudo incluso
 
 VERSION=$(cat VERSION)
-BUILD_DIR="build-selfcontained"
+BUILD_DIR="dist"
 WHEELS_DIR="$BUILD_DIR/wheels"
 
 # Limpa e prepara
-rm -rf "$BUILD_DIR"
+rm -rf "$BUILD_DIR/wheels"
 mkdir -p "$WHEELS_DIR"
 
 # Baixa as dependências como wheels
