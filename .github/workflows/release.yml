@@ -145,7 +145,6 @@ jobs:
           ./version.sh "${{ inputs.version_type }}"
         fi
 
-    # --- NOVA ETAPA ADICIONADA AQUI ---
     - name: Update Debian Changelog with new version
       run: |
         NEW_VERSION="${{ steps.new_version.outputs.version }}"
@@ -156,7 +155,6 @@ jobs:
         dch -b --changelog debian/changelog --newversion "${NEW_VERSION}" "Automated release build."
         echo "Conteúdo de debian/changelog após atualização:"
         cat debian/changelog
-    # -----------------------------------
 
     - name: Update CHANGELOG.md
       run: |
@@ -289,18 +287,38 @@ jobs:
     - name: Find build artifacts
       id: artifacts
       run: |
-        # Find the .deb file in dist directory
-        DEB_FILE=$(find dist/ -name "openvpn-manager_*.deb" -type f | head -1)
+        # Find the .deb file in the parent directory (where dpkg-deb places it)
+        # Use a more robust find that starts from the root of the runner's workspace
+        # and specifically looks for the new version.
+        NEW_VERSION="${{ steps.new_version.outputs.version }}"
+        DEB_FILE=$(find "${{ github.workspace }}/../" -name "openvpn-manager_${NEW_VERSION}_*.deb" -type f | head -1)
+        
+        if [ -z "$DEB_FILE" ]; then # Fallback to more general search if specific version not found
+          DEB_FILE=$(find "${{ github.workspace }}/../" -name "openvpn-manager_*.deb" -type f | head -1)
+        fi
+
         if [ -n "$DEB_FILE" ]; then
-          # Convert to relative path for GitHub Actions
-          DEB_REL_PATH=$(realpath --relative-to=. "$DEB_FILE")
+          # Convert to relative path for GitHub Actions.
+          # The softprops/action-gh-release action often expects paths relative to GITHUB_WORKSPACE.
+          # Since the .deb is *outside* the workspace, we need to bring it in or refer to it correctly.
+          # For softprops/action-gh-release, files are typically relative to the repository root.
+          # Let's move the file to dist/ or directly provide the absolute path.
+          # Option 1: Move to dist/ (recommended for consistency)
+          mkdir -p dist/
+          mv "$DEB_FILE" dist/
+          DEB_REL_PATH="dist/$(basename "$DEB_FILE")"
           echo "deb_file=$DEB_REL_PATH" >> $GITHUB_OUTPUT
-          echo "Found .deb file: $DEB_REL_PATH"
-          echo "Size: $(du -sh "$DEB_FILE" | cut -f1)"
+          echo "Found and moved .deb file: $DEB_REL_PATH"
+          echo "Size: $(du -sh "$DEB_REL_PATH" | cut -f1)"
         else
-          echo "❌ No .deb file found!"
-          echo "Available files in dist directory:"
+          echo "❌ No .deb file found after build in expected locations!"
+          echo "Files in parent directory:"
+          ls -la "${{ github.workspace }}/../"
+          echo "Files in current directory:"
+          ls -la .
+          echo "Files in dist directory:"
           ls -la dist/
+          exit 1
         fi
         
         # Find wheel files
