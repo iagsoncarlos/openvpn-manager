@@ -92,10 +92,12 @@ These workflows integrate with your existing version management:
 ## 📁 Generated Artifacts
 
 Each release creates the following artifacts:
-- **📦 `.deb` package**: Ready for Debian/Ubuntu installation
-- **🐍 `.whl` file**: Python wheel for pip installation
-- **📄 `.tar.gz`**: Source distribution
-- **📋 Release notes**: Auto-generated from CHANGELOG.md
+- ** `.whl` file**: Python wheel for pip installation (always created)
+- **📄 `.tar.gz`**: Source distribution (always created)
+- **� `.deb` package**: Ready for Debian/Ubuntu installation (created when build environment supports it)
+- **�📋 Release notes**: Auto-generated from CHANGELOG.md
+
+**Note**: The .deb package creation depends on the build environment having full Debian build tools. In GitHub Actions, you'll always get the Python wheel and source distribution, which cover most installation needs.
 
 ## 🔧 Customization Options
 

@@ -22,6 +22,12 @@ jobs:
       with:
         python-version: '3.10'
 
+    - name: Install build dependencies
+      run: |
+        # Install Debian build dependencies
+        sudo apt-get update
+        sudo apt-get install -y build-essential debhelper dh-python python3-all python3-setuptools python3-dev
+
     - name: Validate version consistency
       run: |
         echo "🔍 Checking version consistency across files..."
