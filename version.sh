@@ -71,7 +71,7 @@ update_version_in_files() {
     
     # Update setup.py
     if [ -f "setup.py" ]; then
-        sed -i "s/version=\"$old_version\"/version=\"$new_version\"/" setup.py
+        sed -i "s/VERSION = \"$old_version\"/VERSION = \"$new_version\"/" setup.py
         log_success "setup.py updated"
     fi
     
