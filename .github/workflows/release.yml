@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version_type:
-        description: 'Tipo de incremento de versão'
+        description: 'Version increment type'
         required: true
         default: 'patch'
         type: choice
@@ -13,11 +13,11 @@ on:
           - minor
           - major
       custom_version:
-        description: 'Versão personalizada (opcional, sobrescreve version_type)'
+        description: 'Custom version (optional, overrides version_type)'
         required: false
         type: string
       prerelease:
-        description: 'Marcar como pré-lançamento'
+        description: 'Mark as pre-release'
         required: false
         default: false
         type: boolean
@@ -148,12 +148,12 @@ jobs:
     - name: Update Debian Changelog with new version
       run: |
         NEW_VERSION="${{ steps.new_version.outputs.version }}"
-        CURRENT_DATE=$(date -R) # Formato RFC 2822 necessário pelo dch
+        CURRENT_DATE=$(date -R) # RFC 2822 format required by dch
         
-        # O comando dch atualiza o debian/changelog.
-        # Substitua 'GitHub Action <action@github.com>' pelo seu nome/e-mail de mantenedor se preferir.
+        # Use dch to add an entry to debian/changelog.
+        # Replace 'GitHub Action <action@github.com>' with your maintainer name/email if preferred.
         dch -b --changelog debian/changelog --newversion "${NEW_VERSION}" "Automated release build."
-        echo "Conteúdo de debian/changelog após atualização:"
+        echo "Contents of debian/changelog after update:"
         cat debian/changelog
 
     - name: Update CHANGELOG.md
@@ -201,13 +201,22 @@ jobs:
         echo "🔨 Building self-contained .deb package..."
         chmod +x ./build.sh
         ./build.sh
-        # Verifica se o .deb foi criado
-        DEB_FILE=$(find .. -name "openvpn-manager_*.deb" -type f | head -1)
+        # dpkg-deb creates the package in the *parent* directory of the current working directory.
+        # We need to find it there and move it to 'dist/'.
+        DEB_FILE=$(find .. -maxdepth 1 -name "openvpn-manager_*.deb" -type f | head -1) # Limit search to parent directory
         if [ -n "$DEB_FILE" ]; then
-          echo "✅ .deb package created: $DEB_FILE"
-          ls -la "$DEB_FILE"
+          echo "✅ .deb package created at: $DEB_FILE"
+          # Move the .deb file to the dist/ directory
+          mkdir -p dist/ # Ensure dist/ directory exists
+          mv "$DEB_FILE" dist/
+          echo "✅ .deb package moved to: dist/$(basename "$DEB_FILE")"
+          ls -la dist/$(basename "$DEB_FILE")
         else
           echo "❌ .deb package not found after build!"
+          echo "Contents of parent directory:"
+          ls -la ..
+          echo "Contents of current directory:"
+          ls -la .
           exit 1
         fi
 
@@ -287,38 +296,18 @@ jobs:
     - name: Find build artifacts
       id: artifacts
       run: |
-        # Find the .deb file in the parent directory (where dpkg-deb places it)
-        # Use a more robust find that starts from the root of the runner's workspace
-        # and specifically looks for the new version.
-        NEW_VERSION="${{ steps.new_version.outputs.version }}"
-        DEB_FILE=$(find "${{ github.workspace }}/../" -name "openvpn-manager_${NEW_VERSION}_*.deb" -type f | head -1)
-        
-        if [ -z "$DEB_FILE" ]; then # Fallback to more general search if specific version not found
-          DEB_FILE=$(find "${{ github.workspace }}/../" -name "openvpn-manager_*.deb" -type f | head -1)
-        fi
-
+        # The .deb should now be in 'dist/'
+        DEB_FILE=$(find dist/ -name "openvpn-manager_*.deb" -type f | head -1)
         if [ -n "$DEB_FILE" ]; then
-          # Convert to relative path for GitHub Actions.
-          # The softprops/action-gh-release action often expects paths relative to GITHUB_WORKSPACE.
-          # Since the .deb is *outside* the workspace, we need to bring it in or refer to it correctly.
-          # For softprops/action-gh-release, files are typically relative to the repository root.
-          # Let's move the file to dist/ or directly provide the absolute path.
-          # Option 1: Move to dist/ (recommended for consistency)
-          mkdir -p dist/
-          mv "$DEB_FILE" dist/
-          DEB_REL_PATH="dist/$(basename "$DEB_FILE")"
+          DEB_REL_PATH=$(realpath --relative-to=. "$DEB_FILE")
           echo "deb_file=$DEB_REL_PATH" >> $GITHUB_OUTPUT
-          echo "Found and moved .deb file: $DEB_REL_PATH"
-          echo "Size: $(du -sh "$DEB_REL_PATH" | cut -f1)"
+          echo "Found .deb file: $DEB_REL_PATH"
+          echo "Size: $(du -sh "$DEB_FILE" | cut -f1)"
         else
-          echo "❌ No .deb file found after build in expected locations!"
-          echo "Files in parent directory:"
-          ls -la "${{ github.workspace }}/../"
-          echo "Files in current directory:"
-          ls -la .
-          echo "Files in dist directory:"
+          echo "❌ No .deb file found in dist/! This should not happen if the previous step succeeded."
+          echo "Available files in dist directory:"
           ls -la dist/
-          exit 1
+          exit 1 # Fatal error, as the .deb should have been moved
         fi
         
         # Find wheel files
