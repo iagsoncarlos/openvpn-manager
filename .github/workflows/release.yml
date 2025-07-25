@@ -203,7 +203,11 @@ jobs:
         # Explicitly exclude large build artifacts
         git reset HEAD dist/ build/ build-enhanced/ *.egg-info/ debian/*.backup || true
         git commit -m "chore: bump version to ${{ steps.new_version.outputs.version }}"
-        git push
+        
+        # Push to current branch (likely develop) instead of main
+        CURRENT_BRANCH=$(git branch --show-current)
+        echo "Pushing to branch: $CURRENT_BRANCH"
+        git push origin "$CURRENT_BRANCH"
 
     - name: Create Git tag
       run: |
