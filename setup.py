@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+"""
+Standalone setup.py for OpenVPN Manager
+No imports from project modules to avoid dependency issues during build
+"""
 from setuptools import setup
 import os
 
