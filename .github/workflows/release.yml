@@ -199,18 +199,21 @@ jobs:
     - name: Build self-contained .deb package
       run: |
         echo "🔨 Building self-contained .deb package..."
+        # Clean old .deb files from the parent directory before build
+        find .. -maxdepth 1 -name "openvpn-manager_*.deb" -type f -delete
         chmod +x ./build.sh
         ./build.sh
-        # dpkg-deb creates the package in the *parent* directory of the current working directory.
-        # We need to find it there and move it to 'dist/'.
-        DEB_FILE=$(find .. -maxdepth 1 -name "openvpn-manager_*.deb" -type f | head -1) # Limit search to parent directory
+        # List all .deb files found in the parent directory for debugging
+        echo "Found .deb files in parent directory after build:"
+        ls -lh .. | grep openvpn-manager_ || true
+        # Get the most recent .deb file
+        DEB_FILE=$(ls -t .. | grep '^openvpn-manager_.*\.deb$' | head -1)
         if [ -n "$DEB_FILE" ]; then
-          echo "✅ .deb package created at: $DEB_FILE"
-          # Move the .deb file to the dist/ directory
-          mkdir -p dist/ # Ensure dist/ directory exists
-          mv "$DEB_FILE" dist/
-          echo "✅ .deb package moved to: dist/$(basename "$DEB_FILE")"
-          ls -la dist/$(basename "$DEB_FILE")
+          echo "✅ .deb package created at: ../$DEB_FILE"
+          mkdir -p dist/
+          mv "../$DEB_FILE" dist/
+          echo "✅ .deb package moved to: dist/$DEB_FILE"
+          ls -la dist/$DEB_FILE
         else
           echo "❌ .deb package not found after build!"
           echo "Contents of parent directory:"
