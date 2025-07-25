@@ -166,27 +166,20 @@ jobs:
         tail -n +18 CHANGELOG.md.bak >> CHANGELOG.md
         rm CHANGELOG.md.bak
 
-    - name: Build package
+    - name: Build .deb package
       run: |
-        chmod +x ./build.sh
+        echo "🔨 Building .deb package..."
         
-        # Build with detailed error checking
-        echo "🔨 Starting package build..."
-        if ./build.sh; then
-          echo "✅ Custom build successful"
-          # Verify .deb was created
-          DEB_FILE=$(find .. -name "openvpn-manager_*.deb" -type f | head -1)
-          if [ -n "$DEB_FILE" ]; then
-            echo "✅ .deb package created: $DEB_FILE"
-            ls -la "$DEB_FILE"
-          else
-            echo "❌ .deb package not found after build!"
-            exit 1
-          fi
+        # Build Debian package directly
+        dpkg-buildpackage -b -uc -us
+        
+        # Verify .deb was created
+        DEB_FILE=$(find .. -name "openvpn-manager_*.deb" -type f | head -1)
+        if [ -n "$DEB_FILE" ]; then
+          echo "✅ .deb package created: $DEB_FILE"
+          ls -la "$DEB_FILE"
         else
-          echo "❌ Custom build failed with exit code $?"
-          echo "Build log:"
-          ls -la ../
+          echo "❌ .deb package not found after build!"
           exit 1
         fi
 
@@ -205,8 +198,8 @@ jobs:
         if [ -f "debian/changelog" ]; then
           git add debian/changelog
         fi
-        # Explicitly exclude large build artifacts
-        git reset HEAD dist/ build/ build-enhanced/ *.egg-info/ debian/*.backup || true
+        # Explicitly exclude build artifacts
+        git reset HEAD dist/ build/ *.egg-info/ debian/*.backup || true
         
         # Check if there are changes to commit
         if git diff --cached --quiet; then

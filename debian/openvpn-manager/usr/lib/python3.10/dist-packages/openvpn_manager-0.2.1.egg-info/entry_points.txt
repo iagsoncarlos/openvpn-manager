@@ -1,3 +1,0 @@
-[console_scripts]
-openvpn-manager = main:main
-

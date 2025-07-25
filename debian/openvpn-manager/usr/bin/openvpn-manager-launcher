@@ -34,7 +34,7 @@ show_info() {
 check_dependencies() {
     local missing_deps=()
     
-    echo "Verificando dependências..."
+    echo "Checking dependencies..."
     
     # Check Python 3
     if ! command -v python3 >/dev/null 2>&1; then
@@ -48,31 +48,31 @@ check_dependencies() {
     
     # Check PyQt6
     if ! python3 -c "import PyQt6.QtWidgets" 2>/dev/null; then
-        missing_deps+=("PyQt6 (python3-pyqt6 ou pip3 install PyQt6)")
+        missing_deps+=("PyQt6 (python3-pyqt6 or pip3 install PyQt6)")
     fi
     
     # Check main module
     export PYTHONPATH="/usr/lib/python3.10/dist-packages:$PYTHONPATH"
     if ! python3 -c "import main" 2>/dev/null; then
-        missing_deps+=("main module (OpenVPN Manager não instalado corretamente)")
+        missing_deps+=("main module (OpenVPN Manager not installed correctly)")
     fi
     
     if [ ${#missing_deps[@]} -gt 0 ]; then
-        local deps_text="Dependências faltando:\n"
+        local deps_text="Missing dependencies:\n"
         for dep in "${missing_deps[@]}"; do
             deps_text+="• $dep\n"
         done
-        deps_text+="\nInstale as dependências e tente novamente."
+        deps_text+="\nInstall the dependencies and try again."
         show_error "$deps_text"
         exit 1
     fi
     
-    echo "✅ Todas as dependências verificadas"
+    echo "All dependencies verified"
 }
 
 # Check if running as root
 if [ "$EUID" -eq 0 ]; then
-    show_error "Não execute este aplicativo como root.\nExecute como usuário normal."
+    show_error "Do not run this application as root.\nRun as normal user."
     exit 1
 fi
 
@@ -81,14 +81,14 @@ check_dependencies
 
 # Check if user is in sudo group
 if ! groups | grep -q '\bsudo\b'; then
-    show_error "Seu usuário precisa estar no grupo sudo para usar este aplicativo.\nExecute: sudo usermod -a -G sudo \$USER\nDepois faça logout e login novamente."
+    show_error "Your user needs to be in the sudo group to use this application.\nRun: sudo usermod -a -G sudo \$USER\nThen logout and login again."
     exit 1
 fi
 
 # Check if required commands exist
 for cmd in openvpn pkill; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
-        show_error "Comando necessário não encontrado: $cmd\nInstale o pacote openvpn."
+        show_error "Required command not found: $cmd\nInstall the openvpn package."
         exit 1
     fi
 done
@@ -96,33 +96,33 @@ done
 # Check if we have a terminal for password input
 if [ ! -t 0 ]; then
     # No terminal available - launched from GUI
-    echo "Detectado ambiente gráfico, configurando autenticação..."
+    echo "Graphical environment detected, configuring authentication..."
     
     # Use zenity or kdialog to ask for password if available
     if command -v zenity >/dev/null 2>&1; then
-        PASSWORD=$(zenity --password --title="OpenVPN Manager" --text="Digite sua senha para gerenciar conexões VPN:")
+        PASSWORD=$(zenity --password --title="OpenVPN Manager" --text="Enter your password to manage VPN connections:")
         if [ $? -ne 0 ] || [ -z "$PASSWORD" ]; then
-            show_error "Autenticação cancelada. Não é possível iniciar o aplicativo."
+            show_error "Authentication cancelled. Cannot start application."
             exit 1
         fi
         # Test the password
         if ! echo "$PASSWORD" | sudo -S -v >/dev/null 2>&1; then
-            show_error "Senha incorreta. Não é possível iniciar o aplicativo."
+            show_error "Incorrect password. Cannot start application."
             exit 1
         fi
     elif command -v kdialog >/dev/null 2>&1; then
-        PASSWORD=$(kdialog --password "Digite sua senha para gerenciar conexões VPN:")
+        PASSWORD=$(kdialog --password "Enter your password to manage VPN connections:")
         if [ $? -ne 0 ] || [ -z "$PASSWORD" ]; then
-            show_error "Autenticação cancelada. Não é possível iniciar o aplicativo."
+            show_error "Authentication cancelled. Cannot start application."
             exit 1
         fi
         # Test the password
         if ! echo "$PASSWORD" | sudo -S -v >/dev/null 2>&1; then
-            show_error "Senha incorreta. Não é possível iniciar o aplicativo."
+            show_error "Incorrect password. Cannot start application."
             exit 1
         fi
     else
-        show_error "Nenhum diálogo de senha disponível. Execute pelo terminal: openvpn-manager-launcher"
+        show_error "No password dialog available. Run from terminal: openvpn-manager-launcher"
         exit 1
     fi
     
@@ -137,18 +137,18 @@ if [ ! -t 0 ]; then
     # Export password for subprocess sudo calls
     export SUDO_PASSWORD="$PASSWORD"
     
-    echo "Iniciando OpenVPN Manager..."
+    echo "Starting OpenVPN Manager..."
     export PYTHONPATH="/usr/lib/python3.10/dist-packages:$PYTHONPATH"
     
     # Add error handling for Python execution
     if ! python3 -c "import main; main.main()" "$@"; then
-        echo "❌ Falha ao iniciar o OpenVPN Manager"
+        echo "Failed to start OpenVPN Manager"
         
         # Try quick diagnostic if available
         if [ -f "/usr/share/openvpn-manager/openvpn-manager-diagnostics.sh" ]; then
-            echo "🔍 Executando correção automática..."
+            echo "Running automatic fix..."
             if /usr/share/openvpn-manager/openvpn-manager-diagnostics.sh "silent"; then
-                echo "✅ Tentando iniciar novamente..."
+                echo "Trying to start again..."
                 if python3 -c "import main; main.main()" "$@"; then
                     exit 0
                 fi
@@ -156,14 +156,14 @@ if [ ! -t 0 ]; then
         fi
         
         # Simple error message
-        show_error "Falha ao iniciar o OpenVPN Manager.\n\n🔧 Execute: /usr/share/openvpn-manager/openvpn-manager-diagnostics.sh\nOu: pip3 install PyQt6"
+        show_error "Failed to start OpenVPN Manager.\n\nExecute: /usr/share/openvpn-manager/openvpn-manager-diagnostics.sh\nOr: pip3 install PyQt6"
         exit 1
     fi
 else
     # Terminal available, use sudo
-    echo "Autenticando para gerenciar conexões VPN..."
+    echo "Authenticating to manage VPN connections..."
     if ! sudo -v; then
-        show_error "Falha na autenticação. Não é possível iniciar o aplicativo."
+        show_error "Authentication failed. Cannot start application."
         exit 1
     fi
 
@@ -176,18 +176,18 @@ else
     )
 
     # Now launch the Python application using the installed module
-    echo "Iniciando OpenVPN Manager..."
+    echo "Starting OpenVPN Manager..."
     export PYTHONPATH="/usr/lib/python3.10/dist-packages:$PYTHONPATH"
     
     # Add error handling for Python execution
     if ! python3 -c "import main; main.main()" "$@"; then
-        echo "❌ Falha ao iniciar o OpenVPN Manager"
+        echo "Failed to start OpenVPN Manager"
         
         # Try quick diagnostic if available
         if [ -f "/usr/share/openvpn-manager/openvpn-manager-diagnostics.sh" ]; then
-            echo "🔍 Executando correção automática..."
+            echo "Running automatic fix..."
             if /usr/share/openvpn-manager/openvpn-manager-diagnostics.sh "silent"; then
-                echo "✅ Tentando iniciar novamente..."
+                echo "Trying to start again..."
                 if python3 -c "import main; main.main()" "$@"; then
                     exit 0
                 fi
@@ -195,8 +195,8 @@ else
         fi
         
         # Simple error message
-        echo "🔧 Execute: /usr/share/openvpn-manager/openvpn-manager-diagnostics.sh"
-        echo "Ou: pip3 install PyQt6"
+        echo "Execute: /usr/share/openvpn-manager/openvpn-manager-diagnostics.sh"
+        echo "Or: pip3 install PyQt6"
         exit 1
     fi
 fi

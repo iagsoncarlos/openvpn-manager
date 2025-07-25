@@ -9,7 +9,6 @@ include setup.py
 include main.py
 include config.py
 include version.sh
-include build.sh
 include install-dev.sh
 include uninstall.sh
 include openvpn-manager-launcher.sh

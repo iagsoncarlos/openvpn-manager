@@ -4,7 +4,7 @@ set -e
 
 case "$1" in
     configure)
-        echo "Configuring OpenVPN Manager (Self-Contained v0.2.1)..."
+        echo "Configuring OpenVPN Manager v0.2.1..."
         
         # Function to log messages
         log_msg() {
@@ -18,10 +18,10 @@ case "$1" in
         
         log_msg "Checking Python dependencies..."
         
-        # Install bundled Python wheels
+        # Check for bundled wheels first (self-contained version)
         WHEELS_DIR="/usr/share/openvpn-manager/wheels"
         if [ -d "$WHEELS_DIR" ] && [ "$(ls -A "$WHEELS_DIR" 2>/dev/null)" ]; then
-            log_msg "Installing bundled Python dependencies..."
+            log_msg "Found bundled wheels, installing PyQt6 dependencies..."
             
             # Install wheels for all users
             for wheel in "$WHEELS_DIR"/*.whl; do
@@ -34,92 +34,95 @@ case "$1" in
                 fi
             done
             
-            log_msg "✅ Bundled dependencies installed successfully!"
+            log_msg "Bundled dependencies installation completed!"
         else
-            log_msg "⚠️  No bundled wheels found, installing PyQt6 from internet..."
-            pip3 install PyQt6>=6.4.0 || {
-                log_msg "❌ Failed to install PyQt6. Manual installation required."
-            }
-        fi
-        
-        # Test PyQt6 installation
-        if check_python_package "PyQt6.QtWidgets"; then
-            log_msg "✅ PyQt6 installation verified!"
-        else
-            log_msg "⚠️  PyQt6 verification failed. GUI may not work."
-            log_msg "Manual installation: pip3 install PyQt6"
-        fi
-        
-        # Ensure OpenVPN scripts directory exists
-        if [ ! -d "/etc/openvpn" ]; then
-            mkdir -p /etc/openvpn
-        fi
-        
-        # Check if update-resolv-conf script exists, if not create a basic one
-        if [ ! -f "/etc/openvpn/update-resolv-conf" ]; then
-            echo "Creating basic DNS update script..."
-            cat > /etc/openvpn/update-resolv-conf << 'EOFSCRIPT'
-#!/bin/bash
-# Enhanced DNS update script for OpenVPN
-case "$script_type" in
-    up)
-        echo "Setting up VPN DNS..."
-        if [ -n "$foreign_option_1" ]; then
-            # Backup current resolv.conf
-            cp /etc/resolv.conf /etc/resolv.conf.openvpn.backup 2>/dev/null || true
-            # Extract DNS server from foreign_option_1
-            DNS_SERVER=$(echo "$foreign_option_1" | sed 's/dhcp-option DNS //')
-            if [ -n "$DNS_SERVER" ]; then
-                echo "nameserver $DNS_SERVER" > /etc/resolv.conf
-                echo "# OpenVPN DNS - $DNS_SERVER" >> /etc/resolv.conf
+            log_msg "No bundled wheels found, checking system packages..."
+            
+            # Try system packages first
+            if ! check_python_package "PyQt6"; then
+                log_msg "PyQt6 not found, attempting installation..."
+                
+                # Try apt package first
+                if command -v apt-get >/dev/null 2>&1; then
+                    log_msg "Trying to install python3-pyqt6 via apt..."
+                    apt-get update >/dev/null 2>&1 || true
+                    if apt-get install -y python3-pyqt6 >/dev/null 2>&1; then
+                        log_msg "Successfully installed python3-pyqt6 via apt"
+                    else
+                        log_msg "apt installation failed, trying pip3..."
+                        pip3 install PyQt6>=6.4.0 || {
+                            log_msg "ERROR: Failed to install PyQt6. GUI will not work!"
+                        }
+                    fi
+                else
+                    log_msg "apt not available, trying pip3..."
+                    pip3 install PyQt6>=6.4.0 || {
+                        log_msg "ERROR: Failed to install PyQt6. GUI will not work!"
+                    }
+                fi
+            else
+                log_msg "PyQt6 already available"
             fi
         fi
-        ;;
-    down)
-        echo "Restoring original DNS..."
-        if [ -f /etc/resolv.conf.openvpn.backup ]; then
-            mv /etc/resolv.conf.openvpn.backup /etc/resolv.conf
+        
+        # Verify PyQt6 and apply Qt fix if needed
+        if check_python_package "PyQt6.QtWidgets"; then
+            log_msg "✅ PyQt6 installation verified successfully!"
+            
+            # Apply Qt XCB fix using integrated diagnostics
+            if [ -f "/usr/share/openvpn-manager/openvpn-manager-diagnostics.sh" ]; then
+                log_msg "🔍 Testing Qt platform plugin..."
+                if ! /usr/share/openvpn-manager/openvpn-manager-diagnostics.sh "silent"; then
+                    log_msg "⚠️  Qt platform issues detected, applying automatic fix..."
+                    if /usr/share/openvpn-manager/openvpn-manager-diagnostics.sh "fix-only" >/dev/null 2>&1; then
+                        log_msg "✅ Qt platform fix applied successfully"
+                    else
+                        log_msg "❌ Qt platform fix failed - manual intervention may be required"
+                    fi
+                else
+                    log_msg "✅ Qt platform plugin working correctly"
+                fi
+            fi
+        else
+            log_msg "❌ PyQt6 verification failed - GUI may not work"
+            log_msg "Manual installation required: pip3 install PyQt6"
         fi
-        ;;
-esac
-EOFSCRIPT
-            chmod +x /etc/openvpn/update-resolv-conf
-        fi
+        
+        # Basic system setup
+        log_msg "Setting up system integration..."
         
         # Ensure PolicyKit is properly configured
         if command -v systemctl &> /dev/null; then
-            systemctl reload polkit.service || true
+            systemctl reload polkit.service 2>/dev/null || true
+            log_msg "PolicyKit service reloaded"
         fi
         
         # Update desktop database
         if command -v update-desktop-database &> /dev/null; then
-            update-desktop-database /usr/share/applications || true
+            update-desktop-database /usr/share/applications 2>/dev/null || true
+            log_msg "Desktop database updated"
         fi
         
-        # Update icon cache
-        if command -v gtk-update-icon-cache &> /dev/null; then
-            gtk-update-icon-cache -f /usr/share/pixmaps || true
-        fi
+        # Ensure proper permissions for executables
+        chmod 755 /usr/bin/openvpn-manager-launcher 2>/dev/null || true
+        chmod 755 /usr/bin/openvpn-manager 2>/dev/null || true
         
+        # Final status
+        echo "🎉 OpenVPN Manager installation completed!"
+        echo "📦 Version: 0.2.1"
         echo ""
-        echo "🎉 OpenVPN Manager (Self-Contained) installation completed!"
-        echo "📦 All Python dependencies included in package"
-        echo "🚀 Launch with: openvpn-manager-launcher"
-        echo "🖥️  Or find 'OpenVPN Manager' in your applications menu"
+        echo "🚀 Launch: openvpn-manager-launcher"
+        echo "🛠️  If issues: /usr/share/openvpn-manager/openvpn-manager-diagnostics.sh"
         echo ""
-        
-        # Run dependency checker if available
-        if [ -f "/usr/share/openvpn-manager/check-deps.py" ]; then
-            log_msg "Running post-installation dependency check..."
-            python3 /usr/share/openvpn-manager/check-deps.py || {
-                log_msg "⚠️  Dependency check reported issues"
-            }
-        fi
-        
-        log_msg "Installation completed!"
+        ;;
+    
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+    
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        exit 1
         ;;
 esac
-
-
 
 exit 0
