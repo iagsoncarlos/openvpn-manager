@@ -1,3 +1,9 @@
+openvpn-manager (0.2.4-1) unstable; urgency=medium
+
+  * Version bump to 0.2.4
+
+ -- Iágson Carlos Lima Silva <iagsoncarlos@gmail.com>  Fri, 25 Jul 2025 20:47:14 +0000
+
 openvpn-manager (0.2.2-1) unstable; urgency=medium
 
   * Self-contained package with bundled Python dependencies

@@ -7,7 +7,7 @@ from setuptools import setup
 import os
 
 # Hardcoded version - will be updated by version.sh - FIXED
-VERSION = "0.2.3"
+VERSION = "0.2.4"
 
 # Find all wheel files (only for .deb builds)
 wheels_dir = 'build-enhanced/wheels'
