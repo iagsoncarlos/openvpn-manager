@@ -196,6 +196,10 @@ jobs:
 
     - name: Commit version changes
       run: |
+        # Check if we're on a protected branch
+        CURRENT_BRANCH=$(git branch --show-current)
+        echo "Current branch: $CURRENT_BRANCH"
+        
         # Only commit version-related files, not build artifacts
         git add VERSION config.py pyproject.toml setup.py CHANGELOG.md
         if [ -f "debian/changelog" ]; then
@@ -203,12 +207,22 @@ jobs:
         fi
         # Explicitly exclude large build artifacts
         git reset HEAD dist/ build/ build-enhanced/ *.egg-info/ debian/*.backup || true
-        git commit -m "chore: bump version to ${{ steps.new_version.outputs.version }}"
         
-        # Push to current branch (likely develop) instead of main
-        CURRENT_BRANCH=$(git branch --show-current)
-        echo "Pushing to branch: $CURRENT_BRANCH"
-        git push origin "$CURRENT_BRANCH"
+        # Check if there are changes to commit
+        if git diff --cached --quiet; then
+          echo "No changes to commit, skipping commit step"
+        else
+          git commit -m "chore: bump version to ${{ steps.new_version.outputs.version }}"
+          
+          # Only try to push if we're not on main (which might be protected)
+          if [ "$CURRENT_BRANCH" != "main" ]; then
+            echo "Pushing to branch: $CURRENT_BRANCH"
+            git push origin "$CURRENT_BRANCH"
+          else
+            echo "⚠️ Skipping push to protected main branch"
+            echo "💡 Create a PR manually with these changes if needed"
+          fi
+        fi
 
     - name: Create Git tag
       run: |
