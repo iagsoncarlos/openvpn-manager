@@ -1,4 +1,4 @@
-name: Auto Version Update
+name: Auto Version
 
 on:
   pull_request:
@@ -7,18 +7,16 @@ on:
 
 permissions:
   contents: write
-  pull-requests: read
 
 jobs:
-  auto-version-update:
+  auto-version:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     
     steps:
-    - name: Checkout code
+    - name: Checkout
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0
         token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Configure Git
@@ -26,173 +24,31 @@ jobs:
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
 
-    - name: Analyze PR labels for version type
-      id: version_type
-      run: |
-        PR_NUMBER="${{ github.event.pull_request.number }}"
-        
-        # Get PR labels
-        LABELS=$(gh pr view $PR_NUMBER --json labels --jq '.labels[].name' || echo "")
-        
-        VERSION_TYPE="patch"  # default
-        
-        if echo "$LABELS" | grep -q "major"; then
-          VERSION_TYPE="major"
-        elif echo "$LABELS" | grep -q "minor"; then
-          VERSION_TYPE="minor"
-        elif echo "$LABELS" | grep -q "patch"; then
-          VERSION_TYPE="patch"
-        elif echo "$LABELS" | grep -q "breaking"; then
-          VERSION_TYPE="major"
-        elif echo "$LABELS" | grep -q "feature"; then
-          VERSION_TYPE="minor"
-        elif echo "$LABELS" | grep -q "bugfix\|bug"; then
-          VERSION_TYPE="patch"
-        fi
-        
-        echo "type=$VERSION_TYPE" >> $GITHUB_OUTPUT
-        echo "Detected version type: $VERSION_TYPE"
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Analyze PR title and commits for version type
-      id: analyze_changes
-      run: |
-        PR_TITLE="${{ github.event.pull_request.title }}"
-        PR_BODY="${{ github.event.pull_request.body }}"
-        
-        VERSION_TYPE="${{ steps.version_type.outputs.type }}"
-        
-        # If no labels detected, analyze title/body
-        if [ "$VERSION_TYPE" = "patch" ]; then
-          if echo "$PR_TITLE $PR_BODY" | grep -qi "breaking\|major"; then
-            VERSION_TYPE="major"
-          elif echo "$PR_TITLE $PR_BODY" | grep -qi "feat\|feature\|minor"; then
-            VERSION_TYPE="minor"
-          fi
-        fi
-        
-        echo "final_type=$VERSION_TYPE" >> $GITHUB_OUTPUT
-        echo "Final version type: $VERSION_TYPE"
-
     - name: Check if version update needed
-      id: check_update
+      id: check
       run: |
-        # Skip if PR is marked as no-release
-        PR_LABELS="${{ github.event.pull_request.labels }}"
-        if echo "$PR_LABELS" | grep -q "no-release\|skip-release"; then
-          echo "should_update=false" >> $GITHUB_OUTPUT
-          echo "Skipping version update due to no-release label"
-          exit 0
-        fi
-        
-        # Skip if this is already a version bump commit
         if echo "${{ github.event.pull_request.title }}" | grep -q "chore: bump version"; then
-          echo "should_update=false" >> $GITHUB_OUTPUT
-          echo "Skipping version update - this is already a version bump"
-          exit 0
+          echo "skip=true" >> $GITHUB_OUTPUT
+        else
+          echo "skip=false" >> $GITHUB_OUTPUT
         fi
-        
-        echo "should_update=true" >> $GITHUB_OUTPUT
 
     - name: Update version
-      if: steps.check_update.outputs.should_update == 'true'
+      if: steps.check.outputs.skip == 'false'
       run: |
         chmod +x ./version.sh
         OLD_VERSION=$(cat VERSION)
-        ./version.sh "${{ steps.analyze_changes.outputs.final_type }}"
+        ./version.sh patch
         NEW_VERSION=$(cat VERSION)
-        
         echo "OLD_VERSION=$OLD_VERSION" >> $GITHUB_ENV
         echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
-        
-        echo "Version updated: $OLD_VERSION → $NEW_VERSION"
 
-    - name: Update CHANGELOG.md
-      if: steps.check_update.outputs.should_update == 'true'
+    - name: Commit changes
+      if: steps.check.outputs.skip == 'false'
       run: |
-        CURRENT_DATE=$(date +%Y-%m-%d)
-        PR_TITLE="${{ github.event.pull_request.title }}"
-        PR_NUMBER="${{ github.event.pull_request.number }}"
-        PR_AUTHOR="${{ github.event.pull_request.user.login }}"
-        
-        # Backup original changelog
-        cp CHANGELOG.md CHANGELOG.md.bak
-        
-        # Create new changelog with updated version
-        cat > CHANGELOG.md << CHANGELOG_EOF
-# Changelog
-
-All notable changes to OpenVPN Manager will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]
-
-### Planned
-- Enhanced connection statistics and monitoring
-- Multiple VPN provider support
-- Configuration backup and restore
-- Advanced logging and diagnostics
-
-## [$NEW_VERSION] - $CURRENT_DATE
-
-### Changed
-- $PR_TITLE (#$PR_NUMBER by @$PR_AUTHOR)
-
-CHANGELOG_EOF
-        
-        # Append existing changelog content (skip the header and unreleased section)
-        tail -n +18 CHANGELOG.md.bak >> CHANGELOG.md
-        rm CHANGELOG.md.bak
-
-    - name: Commit and push changes
-      if: steps.check_update.outputs.should_update == 'true'
-      run: |
-        git add VERSION config.py pyproject.toml setup.py CHANGELOG.md
+        git add VERSION config.py pyproject.toml setup.py
         if [ -f "debian/changelog" ]; then
           git add debian/changelog
         fi
-        
-        COMMIT_MSG="chore: bump version to $NEW_VERSION"
-        git commit -m "$COMMIT_MSG" -m "Auto-update after merging PR #${{ github.event.pull_request.number }}" -m "Previous version: $OLD_VERSION" -m "New version: $NEW_VERSION" -m "Type: ${{ steps.analyze_changes.outputs.final_type }}"
+        git commit -m "chore: bump version to $NEW_VERSION"
         git push
-
-    - name: Create summary
-      if: steps.check_update.outputs.should_update == 'true'
-      run: |
-        cat >> $GITHUB_STEP_SUMMARY << 'SUMMARY_EOF'
-## 📈 Version Auto-Updated
-
-### Details
-SUMMARY_EOF
-        
-        cat >> $GITHUB_STEP_SUMMARY << SUMMARY_EOF
-- **PR**: #${{ github.event.pull_request.number }} - ${{ github.event.pull_request.title }}
-- **Author**: @${{ github.event.pull_request.user.login }}
-- **Version Change**: $OLD_VERSION → $NEW_VERSION
-- **Update Type**: ${{ steps.analyze_changes.outputs.final_type }}
-
-### Files Updated
-- ✅ VERSION
-- ✅ config.py
-- ✅ pyproject.toml  
-- ✅ setup.py
-- ✅ CHANGELOG.md
-- ✅ debian/changelog (if exists)
-
-### Next Steps
-To create a release, run the Create Release workflow manually from the Actions tab.
-SUMMARY_EOF
-
-    - name: Skip summary
-      if: steps.check_update.outputs.should_update == 'false'
-      run: |
-        cat >> $GITHUB_STEP_SUMMARY << 'SUMMARY_EOF'
-## ⏭️ Version Update Skipped
-
-Version updates are skipped for:
-- PRs with `no-release` or `skip-release` labels
-- Version bump commits (to avoid loops)
-SUMMARY_EOF

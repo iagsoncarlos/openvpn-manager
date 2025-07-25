@@ -124,39 +124,40 @@ jobs:
         NEW_VERSION="${{ steps.new_version.outputs.version }}"
         CURRENT_DATE=$(date +%Y-%m-%d)
         
-        # Create temporary file for new changelog
-        cat > temp_changelog.md << EOF
-# Changelog
-
-All notable changes to OpenVPN Manager will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]
-
-### Planned
-- Enhanced connection statistics and monitoring
-- Multiple VPN provider support
-- Configuration backup and restore
-- Advanced logging and diagnostics
-
-## [$NEW_VERSION] - $CURRENT_DATE
-
-### Added
-- Automated release via GitHub Actions
-
-### Changed
-- Version bumped to $NEW_VERSION
-
-### Fixed
-- Minor bug fixes and improvements
-
-EOF
+        # Backup the original changelog
+        cp CHANGELOG.md CHANGELOG.md.bak
         
-        # Append existing changelog content (skip the header and unreleased section)
-        tail -n +18 CHANGELOG.md >> temp_changelog.md
-        mv temp_changelog.md CHANGELOG.md
+        # Create the new changelog header
+        echo "# Changelog" > CHANGELOG.md
+        echo "" >> CHANGELOG.md
+        echo "All notable changes to OpenVPN Manager will be documented in this file." >> CHANGELOG.md
+        echo "" >> CHANGELOG.md
+        echo "The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)," >> CHANGELOG.md
+        echo "and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)." >> CHANGELOG.md
+        echo "" >> CHANGELOG.md
+        echo "## [Unreleased]" >> CHANGELOG.md
+        echo "" >> CHANGELOG.md
+        echo "### Planned" >> CHANGELOG.md
+        echo "- Enhanced connection statistics and monitoring" >> CHANGELOG.md
+        echo "- Multiple VPN provider support" >> CHANGELOG.md
+        echo "- Configuration backup and restore" >> CHANGELOG.md
+        echo "- Advanced logging and diagnostics" >> CHANGELOG.md
+        echo "" >> CHANGELOG.md
+        echo "## [$NEW_VERSION] - $CURRENT_DATE" >> CHANGELOG.md
+        echo "" >> CHANGELOG.md
+        echo "### Added" >> CHANGELOG.md
+        echo "- Automated release via GitHub Actions" >> CHANGELOG.md
+        echo "" >> CHANGELOG.md
+        echo "### Changed" >> CHANGELOG.md
+        echo "- Version bumped to $NEW_VERSION" >> CHANGELOG.md
+        echo "" >> CHANGELOG.md
+        echo "### Fixed" >> CHANGELOG.md
+        echo "- Minor bug fixes and improvements" >> CHANGELOG.md
+        echo "" >> CHANGELOG.md
+        
+        # Append the rest of the original changelog (skip the header)
+        tail -n +18 CHANGELOG.md.bak >> CHANGELOG.md
+        rm CHANGELOG.md.bak
 
     - name: Build package
       run: |
@@ -188,23 +189,19 @@ EOF
         
         # If release notes are empty, create default ones
         if [ ! -s release_notes.md ]; then
-          cat > release_notes.md << EOF
-## What's Changed
-
-* Version bumped to $NEW_VERSION
-* Build improvements and bug fixes
-* See [CHANGELOG.md](CHANGELOG.md) for full details
-
-**Full Changelog**: https://github.com/${{ github.repository }}/compare/v${{ steps.current_version.outputs.version }}...v$NEW_VERSION
-EOF
+          echo "## What's Changed" > release_notes.md
+          echo "" >> release_notes.md
+          echo "* Version bumped to $NEW_VERSION" >> release_notes.md
+          echo "* Build improvements and bug fixes" >> release_notes.md
+          echo "* See [CHANGELOG.md](CHANGELOG.md) for full details" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/v${{ steps.current_version.outputs.version }}...v$NEW_VERSION" >> release_notes.md
         fi
         
         # Store in output (handle multiline)
-        {
-          echo 'notes<<EOF'
-          cat release_notes.md
-          echo EOF
-        } >> $GITHUB_OUTPUT
+        echo 'notes<<EOF' >> $GITHUB_OUTPUT
+        cat release_notes.md >> $GITHUB_OUTPUT
+        echo 'EOF' >> $GITHUB_OUTPUT
 
     - name: Find build artifacts
       id: artifacts
@@ -258,24 +255,27 @@ EOF
 
     - name: Create deployment summary
       run: |
-        cat >> $GITHUB_STEP_SUMMARY << EOF
-        ## 🚀 Release Created Successfully!
-        
-        ### Release Details
-        - **Version**: v${{ steps.new_version.outputs.version }}
-        - **Previous Version**: v${{ steps.current_version.outputs.version }}
-        - **Release Type**: ${{ inputs.version_type }}${{ inputs.custom_version && ' (custom)' || '' }}
-        - **Pre-release**: ${{ inputs.prerelease }}
-        
-        ### Artifacts Built
-        $([ -n "${{ steps.artifacts.outputs.deb_file }}" ] && echo "- ✅ Debian Package (.deb)")
-        $([ -n "${{ steps.artifacts.outputs.wheel_files }}" ] && echo "- ✅ Python Wheel (.whl)")
-        $([ -n "${{ steps.artifacts.outputs.tar_files }}" ] && echo "- ✅ Source Distribution (.tar.gz)")
-        
-        ### Next Steps
-        1. Check the [release page](https://github.com/${{ github.repository }}/releases/tag/v${{ steps.new_version.outputs.version }})
-        2. Test the release artifacts
-        3. Update documentation if needed
-        4. Announce the release to users
-        
-        EOF
+        echo "## 🚀 Release Created Successfully!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Release Details" >> $GITHUB_STEP_SUMMARY
+        echo "- **Version**: v${{ steps.new_version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Previous Version**: v${{ steps.current_version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Release Type**: ${{ inputs.version_type }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Pre-release**: ${{ inputs.prerelease }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Artifacts Built" >> $GITHUB_STEP_SUMMARY
+        if [ -n "${{ steps.artifacts.outputs.deb_file }}" ]; then
+          echo "- ✅ Debian Package (.deb)" >> $GITHUB_STEP_SUMMARY
+        fi
+        if [ -n "${{ steps.artifacts.outputs.wheel_files }}" ]; then
+          echo "- ✅ Python Wheel (.whl)" >> $GITHUB_STEP_SUMMARY
+        fi
+        if [ -n "${{ steps.artifacts.outputs.tar_files }}" ]; then
+          echo "- ✅ Source Distribution (.tar.gz)" >> $GITHUB_STEP_SUMMARY
+        fi
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+        echo "1. Check the release page" >> $GITHUB_STEP_SUMMARY
+        echo "2. Test the release artifacts" >> $GITHUB_STEP_SUMMARY
+        echo "3. Update documentation if needed" >> $GITHUB_STEP_SUMMARY
+        echo "4. Announce the release to users" >> $GITHUB_STEP_SUMMARY
