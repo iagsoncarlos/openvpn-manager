@@ -139,11 +139,7 @@ jobs:
     - name: Update version files
       run: |
         chmod +x ./version.sh
-        if [ -n "${{ inputs.custom_version }}" ]; then
-          ./version.sh set "${{ steps.new_version.outputs.version }}"
-        else
-          ./version.sh "${{ inputs.version_type }}"
-        fi
+        ./version.sh set "${{ steps.new_version.outputs.version }}"
 
     - name: Update CHANGELOG.md
       run: |
