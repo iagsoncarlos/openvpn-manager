@@ -145,17 +145,6 @@ jobs:
           ./version.sh "${{ inputs.version_type }}"
         fi
 
-    - name: Update Debian Changelog with new version
-      run: |
-        NEW_VERSION="${{ steps.new_version.outputs.version }}"
-        CURRENT_DATE=$(date -R) # RFC 2822 format required by dch
-        
-        # Use dch to add an entry to debian/changelog.
-        # Replace 'GitHub Action <action@github.com>' with your maintainer name/email if preferred.
-        dch -b --changelog debian/changelog --newversion "${NEW_VERSION}" "Automated release build."
-        echo "Contents of debian/changelog after update:"
-        cat debian/changelog
-
     - name: Update CHANGELOG.md
       run: |
         NEW_VERSION="${{ steps.new_version.outputs.version }}"
