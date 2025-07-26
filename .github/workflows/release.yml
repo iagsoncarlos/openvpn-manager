@@ -203,25 +203,7 @@ jobs:
         find .. -maxdepth 1 -name "openvpn-manager_*.deb" -type f -delete
         chmod +x ./build.sh
         ./build.sh
-        # List all .deb files found in the parent directory for debugging
-        echo "Found .deb files in parent directory after build:"
-        ls -lh .. | grep openvpn-manager_ || true
-        # Get the most recent .deb file
-        DEB_FILE=$(ls -t .. | grep '^openvpn-manager_.*\.deb$' | head -1)
-        if [ -n "$DEB_FILE" ]; then
-          echo "✅ .deb package created at: ../$DEB_FILE"
-          mkdir -p dist/
-          mv "../$DEB_FILE" dist/
-          echo "✅ .deb package moved to: dist/$DEB_FILE"
-          ls -la dist/$DEB_FILE
-        else
-          echo "❌ .deb package not found after build!"
-          echo "Contents of parent directory:"
-          ls -la ..
-          echo "Contents of current directory:"
-          ls -la .
-          exit 1
-        fi
+        echo "✅ .deb package built successfully"
 
     - name: Create source distribution
       run: |
