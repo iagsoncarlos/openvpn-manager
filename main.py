@@ -2,7 +2,7 @@ import sys
 import os
 import subprocess
 import json
-import time
+import shutil
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -36,33 +36,26 @@ except ImportError as e:
     print("Verifique se o arquivo config.py está presente e no PYTHONPATH")
     sys.exit(1)
 
-
-def run_sudo_command(cmd, **kwargs):
-    """Helper function to run sudo commands with password when needed
+def run_privileged_command(cmd, **kwargs):
+    """Run a privileged command. 
     
-    Security Note: This function handles sudo passwords carefully by:
-    - Reading from environment variables only (no hardcoded passwords)
-    - Using stdin pipe to avoid command-line exposure
-    - Clearing sensitive data from memory when possible
+    If already running as root, execute directly.
+    Otherwise, use pkexec/sudo for privilege escalation.
+    
+    cmd: list without sudo/pkexec prefix (e.g. ['pkill','-TERM','openvpn'])
+    Returns CompletedProcess
     """
-    sudo_password = os.environ.get('SUDO_PASSWORD')
-    if sudo_password and len(cmd) > 0 and cmd[0] == 'sudo':
-        # Add -S flag to read password from stdin
-        cmd_with_stdin = cmd[:1] + ['-S'] + cmd[1:]
-        try:
-            result = subprocess.run(
-                cmd_with_stdin,
-                input=sudo_password + '\n',
-                text=True,
-                **kwargs
-            )
-            return result
-        except:
-            # Fallback to original command if stdin approach fails
-            pass
+    # If we're already running as root, execute directly
+    if os.getuid() == 0:
+        return subprocess.run(cmd, **kwargs)
     
-    # Use original command if no password or not sudo
-    return subprocess.run(cmd, **kwargs)
+    # Otherwise, use privilege escalation
+    full_cmd = None
+    if shutil.which('pkexec'):
+        full_cmd = ['pkexec'] + cmd
+    else:
+        full_cmd = ['sudo'] + cmd
+    return subprocess.run(full_cmd, **kwargs)
 
 
 class OpenVPNThread(QThread):
@@ -86,28 +79,24 @@ class OpenVPNThread(QThread):
 
     def run(self):
         try:
-            # Check if we're running as root (via pkexec) or need sudo
+            # If already running as root, use openvpn directly
+            # Otherwise, the launcher should have elevated privileges already
             if os.getuid() == 0:
-                # Running as root via pkexec, use direct openvpn command
-                cmd = [
-                    'openvpn',
-                    '--config', self.config_path,
-                    '--verb', '3',
-                    '--script-security', '2',
-                    '--up', '/etc/openvpn/update-resolv-conf',
-                    '--down', '/etc/openvpn/update-resolv-conf'
-                ]
+                cmd = ['openvpn']
             else:
-                # Use sudo (session should already be active from launcher)
-                cmd = [
-                    'sudo',
-                    'openvpn',
-                    '--config', self.config_path,
-                    '--verb', '3',
-                    '--script-security', '2',
-                    '--up', '/etc/openvpn/update-resolv-conf',
-                    '--down', '/etc/openvpn/update-resolv-conf'
-                ]
+                # This should not happen if launched properly, but keep as fallback
+                if shutil.which('pkexec'):
+                    cmd = ['pkexec', 'openvpn']
+                else:
+                    cmd = ['sudo', 'openvpn']
+            
+            cmd += [
+                '--config', self.config_path,
+                '--verb', '3',
+                '--script-security', '2',
+                '--up', '/etc/openvpn/update-resolv-conf',
+                '--down', '/etc/openvpn/update-resolv-conf'
+            ]
             
             if self.username and self.password:
                 import tempfile
@@ -132,34 +121,14 @@ class OpenVPNThread(QThread):
             self.status_changed.emit("Connecting...")
             self.output_received.emit(f"Executing command: {' '.join(cmd)}")
             
-            # Check if we need to provide password for sudo
-            sudo_password = os.environ.get('SUDO_PASSWORD')
-            stdin_input = None
-            
-            if cmd[0] == 'sudo' and sudo_password:
-                # For sudo command, we need to pass password via stdin
-                stdin_input = sudo_password + '\n'
-                # Use sudo -S to read password from stdin
-                cmd[1:1] = ['-S']  # Insert -S after sudo
-            
             self.process = subprocess.Popen(
                 cmd,
-                stdin=subprocess.PIPE if stdin_input else None,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 universal_newlines=True,
                 bufsize=1,
-                preexec_fn=os.setsid # Allows killing the whole process group later
+                preexec_fn=os.setsid
             )
-            
-            # Send password if needed
-            if stdin_input:
-                try:
-                    self.process.stdin.write(stdin_input)
-                    self.process.stdin.flush()
-                    self.process.stdin.close()
-                except:
-                    pass
 
             connected = False
             failed = False
@@ -261,15 +230,14 @@ class OpenVPNThread(QThread):
         try:
             self.output_received.emit("Attempting to stop OpenVPN processes...")
             
-            # Check if we're running as root or need sudo
+            # If running as root, use direct commands
             if os.getuid() == 0:
-                # Running as root, use direct commands
                 subprocess.run(['pkill', '-TERM', 'openvpn'], capture_output=True, timeout=10)
                 self.output_received.emit("Sent SIGTERM to OpenVPN processes.")
             else:
-                # Use sudo (session should be active from launcher)
-                run_sudo_command(['sudo', 'pkill', '-TERM', 'openvpn'], capture_output=True, timeout=10)
-                self.output_received.emit("Sent SIGTERM to OpenVPN processes via sudo.")
+                # Use privilege escalation (should not be needed if launched properly)
+                run_privileged_command(['pkill', '-TERM', 'openvpn'], capture_output=True, timeout=10)
+                self.output_received.emit("Sent SIGTERM to OpenVPN processes via privilege escalation.")
             
             # Wait a bit for graceful termination
             import time
@@ -284,8 +252,8 @@ class OpenVPNThread(QThread):
                     subprocess.run(['pkill', '-KILL', 'openvpn'], capture_output=True, timeout=10)
                     self.output_received.emit("Sent SIGKILL to OpenVPN processes.")
                 else:
-                    run_sudo_command(['sudo', 'pkill', '-KILL', 'openvpn'], capture_output=True, timeout=10)
-                    self.output_received.emit("Sent SIGKILL to OpenVPN processes via sudo.")
+                    run_privileged_command(['pkill', '-KILL', 'openvpn'], capture_output=True, timeout=10)
+                    self.output_received.emit("Sent SIGKILL to OpenVPN processes via privilege escalation.")
             else:
                 self.output_received.emit("OpenVPN processes terminated successfully.")
                 
@@ -750,8 +718,8 @@ class OpenVPNGUI(QMainWindow):
                         # Running as root, use direct command
                         subprocess.run(['pkill', '-KILL', 'openvpn'], capture_output=True, timeout=10)
                     else:
-                        # Use sudo
-                        run_sudo_command(['sudo', 'pkill', '-KILL', 'openvpn'], capture_output=True, timeout=10)
+                        # Use privilege escalation
+                        run_privileged_command(['pkill', '-KILL', 'openvpn'], capture_output=True, timeout=10)
                     self.log_output.append("Forcibly terminated remaining OpenVPN processes.")
                 except Exception as e:
                     self.log_output.append(f"Error force-killing OpenVPN: {e}")
@@ -1040,6 +1008,7 @@ def main():
     app.setOrganizationName(ORGANIZATION_NAME)
     app.setApplicationName(APP_NAME)
     app.setApplicationVersion(APP_VERSION)
+
     try:
         subprocess.run(['openvpn', '--version'],
                       capture_output=True, check=True)
@@ -1053,14 +1022,20 @@ def main():
             "Arch: sudo pacman -S openvpn"
         )
         sys.exit(1)
-    # if os.getuid() != 0:
-    #     QMessageBox.warning(
-    #         None, "Permissions Required",
-    #         "This application may need to be run with administrative privileges (sudo) "
-    #         "to establish VPN connections.\n"
-    #         "If connections fail, try running with:\n"
-    #         "sudo python3 main.py"
-    #     )
+    
+    # Check if running with elevated privileges
+    if os.getuid() == 0:
+        print("INFO: Running with elevated privileges - no additional authentication required.")
+    else:
+        print("WARNING: Not running with elevated privileges - authentication may be required for each operation.")
+        QMessageBox.warning(
+            None, "Privileges Notice",
+            "This application is not running with elevated privileges.\n"
+            "You may be prompted for authentication when connecting/disconnecting VPN.\n\n"
+            "For better experience, launch using:\n"
+            "openvpn-manager-launcher"
+        )
+    
     window = OpenVPNGUI()
     window.show()
     sys.exit(app.exec())
