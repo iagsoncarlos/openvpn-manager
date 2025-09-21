@@ -93,110 +93,57 @@ for cmd in openvpn pkill; do
     fi
 done
 
-# Check if we have a terminal for password input
-if [ ! -t 0 ]; then
-    # No terminal available - launched from GUI
-    echo "Graphical environment detected, configuring authentication..."
+# Function to authenticate and run with privileges
+authenticate_and_run() {
+    echo "Requesting authentication for OpenVPN Manager..."
     
-    # Use zenity or kdialog to ask for password if available
-    if command -v zenity >/dev/null 2>&1; then
-        PASSWORD=$(zenity --password --title="OpenVPN Manager" --text="Enter your password to manage VPN connections:")
-        if [ $? -ne 0 ] || [ -z "$PASSWORD" ]; then
-            show_error "Authentication cancelled. Cannot start application."
-            exit 1
-        fi
-        # Test the password
-        if ! echo "$PASSWORD" | sudo -S -v >/dev/null 2>&1; then
-            show_error "Incorrect password. Cannot start application."
-            exit 1
-        fi
-    elif command -v kdialog >/dev/null 2>&1; then
-        PASSWORD=$(kdialog --password "Enter your password to manage VPN connections:")
-        if [ $? -ne 0 ] || [ -z "$PASSWORD" ]; then
-            show_error "Authentication cancelled. Cannot start application."
-            exit 1
-        fi
-        # Test the password
-        if ! echo "$PASSWORD" | sudo -S -v >/dev/null 2>&1; then
-            show_error "Incorrect password. Cannot start application."
-            exit 1
-        fi
+    # Collect theme-related environment variables
+    local env_vars=""
+    
+    # GTK Theme variables
+    [ -n "$GTK_THEME" ] && env_vars="$env_vars GTK_THEME=$GTK_THEME"
+    [ -n "$GTK2_RC_FILES" ] && env_vars="$env_vars GTK2_RC_FILES=$GTK2_RC_FILES"
+    [ -n "$GTK_RC_FILES" ] && env_vars="$env_vars GTK_RC_FILES=$GTK_RC_FILES"
+    
+    # Desktop session variables
+    [ -n "$XDG_CURRENT_DESKTOP" ] && env_vars="$env_vars XDG_CURRENT_DESKTOP=$XDG_CURRENT_DESKTOP"
+    [ -n "$DESKTOP_SESSION" ] && env_vars="$env_vars DESKTOP_SESSION=$DESKTOP_SESSION"
+    [ -n "$XDG_SESSION_DESKTOP" ] && env_vars="$env_vars XDG_SESSION_DESKTOP=$XDG_SESSION_DESKTOP"
+    
+    # KDE specific variables
+    [ -n "$KDE_SESSION_VERSION" ] && env_vars="$env_vars KDE_SESSION_VERSION=$KDE_SESSION_VERSION"
+    [ -n "$KDE_FULL_SESSION" ] && env_vars="$env_vars KDE_FULL_SESSION=$KDE_FULL_SESSION"
+    
+    # QT Theme variables
+    [ -n "$QT_STYLE_OVERRIDE" ] && env_vars="$env_vars QT_STYLE_OVERRIDE=$QT_STYLE_OVERRIDE"
+    [ -n "$QT_QPA_PLATFORMTHEME" ] && env_vars="$env_vars QT_QPA_PLATFORMTHEME=$QT_QPA_PLATFORMTHEME"
+    
+    # Try pkexec first (preferred for GUI applications)
+    if command -v pkexec >/dev/null 2>&1; then
+        export PYTHONPATH="/usr/lib/python3.10/dist-packages:$PYTHONPATH"
+        exec pkexec env DISPLAY="$DISPLAY" XAUTHORITY="$XAUTHORITY" PYTHONPATH="$PYTHONPATH" $env_vars python3 -c "import main; main.main()" "$@"
+    # Fallback to sudo
+    elif command -v sudo >/dev/null 2>&1; then
+        export PYTHONPATH="/usr/lib/python3.10/dist-packages:$PYTHONPATH"
+        exec sudo -E env $env_vars python3 -c "import main; main.main()" "$@"
     else
-        show_error "No password dialog available. Run from terminal: openvpn-manager-launcher"
+        show_error "No privilege escalation method available (pkexec or sudo).\nPlease install policykit-1 or sudo."
         exit 1
     fi
-    
-    # Keep sudo session alive in background with the validated password
-    (
-        while sleep 60; do
-            echo "$PASSWORD" | sudo -S -v >/dev/null 2>&1
-            kill -0 "$$" || exit
-        done 2>/dev/null &
-    )
-    
-    # Export password for subprocess sudo calls
-    export SUDO_PASSWORD="$PASSWORD"
-    
-    echo "Starting OpenVPN Manager..."
-    export PYTHONPATH="/usr/lib/python3.10/dist-packages:$PYTHONPATH"
-    
-    # Add error handling for Python execution
-    if ! python3 -c "import main; main.main()" "$@"; then
-        echo "Failed to start OpenVPN Manager"
-        
-        # Try quick diagnostic if available
-        if [ -f "/usr/share/openvpn-manager/openvpn-manager-diagnostics.sh" ]; then
-            echo "Running automatic fix..."
-            if /usr/share/openvpn-manager/openvpn-manager-diagnostics.sh "silent"; then
-                echo "Trying to start again..."
-                if python3 -c "import main; main.main()" "$@"; then
-                    exit 0
-                fi
-            fi
-        fi
-        
-        # Simple error message
-        show_error "Failed to start OpenVPN Manager.\n\nExecute: /usr/share/openvpn-manager/openvpn-manager-diagnostics.sh\nOr: pip3 install PyQt6"
-        exit 1
-    fi
-else
-    # Terminal available, use sudo
-    echo "Authenticating to manage VPN connections..."
-    if ! sudo -v; then
-        show_error "Authentication failed. Cannot start application."
-        exit 1
-    fi
+}
 
-    # Keep sudo session alive in background
-    (
-        while sleep 60; do
-            sudo -n true
-            kill -0 "$$" || exit
-        done 2>/dev/null &
-    )
+# Launch application with elevated privileges from the start
+echo "Starting OpenVPN Manager with elevated privileges..."
+authenticate_and_run "$@"
 
-    # Now launch the Python application using the installed module
-    echo "Starting OpenVPN Manager..."
-    export PYTHONPATH="/usr/lib/python3.10/dist-packages:$PYTHONPATH"
-    
-    # Add error handling for Python execution
-    if ! python3 -c "import main; main.main()" "$@"; then
-        echo "Failed to start OpenVPN Manager"
-        
-        # Try quick diagnostic if available
-        if [ -f "/usr/share/openvpn-manager/openvpn-manager-diagnostics.sh" ]; then
-            echo "Running automatic fix..."
-            if /usr/share/openvpn-manager/openvpn-manager-diagnostics.sh "silent"; then
-                echo "Trying to start again..."
-                if python3 -c "import main; main.main()" "$@"; then
-                    exit 0
-                fi
-            fi
-        fi
-        
-        # Simple error message
-        echo "Execute: /usr/share/openvpn-manager/openvpn-manager-diagnostics.sh"
-        echo "Or: pip3 install PyQt6"
-        exit 1
+# This part should not be reached if exec is successful
+echo "Failed to start OpenVPN Manager"
+if [ -f "/usr/share/openvpn-manager/openvpn-manager-diagnostics.sh" ]; then
+    echo "Running automatic fix..."
+    if /usr/share/openvpn-manager/openvpn-manager-diagnostics.sh "silent"; then
+        echo "Trying to start again..."
+        authenticate_and_run "$@"
     fi
 fi
+show_error "Failed to start OpenVPN Manager.\n\nExecute: /usr/share/openvpn-manager/openvpn-manager-diagnostics.sh\nOr: pip3 install PyQt6"
+exit 1

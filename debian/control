@@ -11,7 +11,7 @@ Package: openvpn-manager
 Architecture: all
 Depends: ${python3:Depends}, ${misc:Depends}, 
  python3 (>= 3.10),
- python3-pyqt6,
+#  python3-pyqt6,
  openvpn,
  resolvconf | systemd-resolved,
  policykit-1,
