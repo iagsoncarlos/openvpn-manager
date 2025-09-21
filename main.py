@@ -923,13 +923,13 @@ class OpenVPNGUI(QMainWindow):
             output = result.stdout
 
             # Example output snippet for 'ip -s link show':
-            # RX: bytes  packets  errors  dropped  overrun  mcast
+            # RX:  bytes packets errors dropped  missed   mcast
             # 12345678 12345    0       0        0        0
-            # TX: bytes  packets  errors  dropped  carrier  collisions
+            # TX:  bytes packets errors dropped carrier collsns
             # 87654321 8765     0       0        0        0
 
-            rx_match = re.search(r'RX: bytes\s+packets.*\n\s*(\d+)', output)
-            tx_match = re.search(r'TX: bytes\s+packets.*\n\s*(\d+)', output)
+            rx_match = re.search(r'RX:\s+bytes\s+packets.*\n\s*(\d+)', output)
+            tx_match = re.search(r'TX:\s+bytes\s+packets.*\n\s*(\d+)', output)
 
             if rx_match:
                 received_bytes = int(rx_match.group(1))
