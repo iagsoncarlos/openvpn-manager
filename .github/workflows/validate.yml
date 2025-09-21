@@ -38,7 +38,7 @@ jobs:
 
     - name: Validate project structure
       run: |
-        echo "🔍 Validating project structure..."
+        echo "Validating: Validating project structure..."
         
         # Check required files exist
         REQUIRED_FILES=(
@@ -55,15 +55,15 @@ jobs:
         
         for file in "${REQUIRED_FILES[@]}"; do
           if [ ! -f "$file" ]; then
-            echo "❌ Required file missing: $file"
+            echo "ERROR: Required file missing: $file"
             exit 1
           fi
-          echo "✅ Found: $file"
+          echo "SUCCESS: Found: $file"
         done
 
     - name: Validate version consistency
       run: |
-        echo "🔍 Checking version consistency..."
+        echo "Validating: Checking version consistency..."
         
         VERSION_FILE=$(cat VERSION)
         echo "VERSION file: $VERSION_FILE"
@@ -84,7 +84,7 @@ jobs:
         if [ "$VERSION_FILE" != "$CONFIG_VERSION" ] || \
            [ "$VERSION_FILE" != "$SETUP_VERSION" ] || \
            [ "$VERSION_FILE" != "$DEBIAN_VERSION" ]; then
-          echo "❌ Version mismatch detected!"
+          echo "ERROR: Version mismatch detected!"
           echo "  VERSION: $VERSION_FILE"
           echo "  config.py: $CONFIG_VERSION"
           echo "  setup.py: $SETUP_VERSION"
@@ -92,34 +92,34 @@ jobs:
           exit 1
         fi
         
-        echo "✅ All versions consistent: $VERSION_FILE"
+        echo "SUCCESS: All versions consistent: $VERSION_FILE"
 
     - name: Validate Python syntax
       run: |
-        echo "🐍 Validating Python syntax..."
+        echo "Python: Validating Python syntax..."
         python -m py_compile main.py
         python -m py_compile config.py
-        echo "✅ Python syntax valid"
+        echo "SUCCESS: Python syntax valid"
 
     - name: Check code style
       run: |
-        echo "🎨 Checking code style..."
+        echo "Style: Checking code style..."
         flake8 main.py config.py --max-line-length=88 --ignore=E203,W503
-        echo "✅ Code style check passed"
+        echo "SUCCESS: Code style check passed"
 
     - name: Validate Debian package metadata
       run: |
-        echo "📦 Validating Debian package metadata..."
+        echo "Package: Validating Debian package metadata..."
         
         # Check control file
         if ! grep -q "Package: openvpn-manager" debian/control; then
-          echo "❌ Package name not found in debian/control"
+          echo "ERROR: Package name not found in debian/control"
           exit 1
         fi
         
         # Check changelog format
         if ! head -1 debian/changelog | grep -q "openvpn-manager (.*) unstable; urgency=medium"; then
-          echo "❌ Invalid changelog format"
+          echo "ERROR: Invalid changelog format"
           exit 1
         fi
         
@@ -127,26 +127,26 @@ jobs:
         CURRENT_YEAR=$(date +%Y)
         FUTURE_DATES=$(grep -c "$((CURRENT_YEAR + 1))" debian/changelog || echo "0")
         if [ "$FUTURE_DATES" -gt 0 ]; then
-          echo "❌ Found $FUTURE_DATES future date(s) in debian/changelog"
+          echo "ERROR: Found $FUTURE_DATES future date(s) in debian/changelog"
           exit 1
         fi
         
-        echo "✅ Debian metadata valid"
+        echo "SUCCESS: Debian metadata valid"
 
     - name: Validate dependencies
       run: |
-        echo "🔗 Validating dependencies..."
+        echo "Dependencies: Validating dependencies..."
         
         # Check if setup.py dependencies are reasonable
         if ! grep -q 'install_requires=\[\]' setup.py; then
-          echo "⚠️  setup.py has external dependencies (expected for bundled .deb)"
+          echo "WARNING: setup.py has external dependencies (expected for bundled .deb)"
         fi
         
         # Validate requirements are documented
         if [ -f "requirements.txt" ]; then
-          echo "✅ Found requirements.txt"
+          echo "SUCCESS: Found requirements.txt"
         else
-          echo "ℹ️  No requirements.txt (using bundled approach)"
+          echo "INFO: No requirements.txt (using bundled approach)"
         fi
 
   test-build:
@@ -173,7 +173,7 @@ jobs:
 
     - name: Test build process
       run: |
-        echo "🔨 Testing build process..."
+        echo "Building: Testing build process..."
         
         # Make scripts executable
         chmod +x ./build.sh ./version.sh
@@ -183,27 +183,27 @@ jobs:
         
         # Test that build script runs without errors
         if timeout 300 ./build.sh; then
-          echo "✅ Build process completed successfully"
+          echo "SUCCESS: Build process completed successfully"
         else
-          echo "❌ Build process failed or timed out"
+          echo "ERROR: Build process failed or timed out"
           exit 1
         fi
         
         # Validate output
         if [ -f "dist/openvpn-manager_"*".deb" ]; then
-          echo "✅ .deb package created"
+          echo "SUCCESS: .deb package created"
           DEB_FILE=$(find dist/ -name "*.deb" | head -1)
-          echo "📦 Package size: $(du -sh "$DEB_FILE" | cut -f1)"
+          echo "Package: Package size: $(du -sh "$DEB_FILE" | cut -f1)"
           
           # Basic validation
           if dpkg-deb --info "$DEB_FILE" >/dev/null 2>&1; then
-            echo "✅ .deb structure is valid"
+            echo "SUCCESS: .deb structure is valid"
           else
-            echo "❌ .deb file is corrupted"
+            echo "ERROR: .deb file is corrupted"
             exit 1
           fi
         else
-          echo "❌ No .deb package found"
+          echo "ERROR: No .deb package found"
           exit 1
         fi
 

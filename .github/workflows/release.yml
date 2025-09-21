@@ -73,23 +73,23 @@ jobs:
       run: |
         CURRENT_VERSION=$(cat VERSION)
         echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-        echo "📍 Current version: $CURRENT_VERSION"
+        echo "VERSION: Current version: $CURRENT_VERSION"
 
     - name: Validate project consistency
       id: validation
       run: |
-        echo "🔍 Validating project consistency..."
+        echo "Validating project consistency..."
         
         # Check if VERSION file exists and is valid
         if [ ! -f "VERSION" ]; then
-          echo "❌ VERSION file not found"
+          echo "ERROR: VERSION file not found"
           echo "should_release=false" >> $GITHUB_OUTPUT
           exit 1
         fi
         
         CURRENT_VERSION=$(cat VERSION)
         if ! [[ $CURRENT_VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-          echo "❌ Invalid version format in VERSION file: $CURRENT_VERSION"
+          echo "ERROR: Invalid version format in VERSION file: $CURRENT_VERSION"
           echo "should_release=false" >> $GITHUB_OUTPUT
           exit 1
         fi
@@ -98,11 +98,11 @@ jobs:
         if [ -f "debian/changelog" ]; then
           DEBIAN_VERSION=$(awk '/^openvpn-manager \(/ {gsub(/[()]/, "", $2); split($2, v, "-"); print v[1]; exit}' debian/changelog)
           if [ "$CURRENT_VERSION" != "$DEBIAN_VERSION" ]; then
-            echo "❌ Version mismatch: VERSION ($CURRENT_VERSION) vs debian/changelog ($DEBIAN_VERSION)"
+            echo "ERROR: Version mismatch: VERSION ($CURRENT_VERSION) vs debian/changelog ($DEBIAN_VERSION)"
             echo "should_release=false" >> $GITHUB_OUTPUT
             exit 1
           fi
-          echo "✅ Debian changelog version matches"
+          echo "SUCCESS: Debian changelog version matches"
         fi
         
         # Check for future dates in changelog
@@ -110,12 +110,12 @@ jobs:
           CURRENT_YEAR=$(date +%Y)
           FUTURE_DATES=$(grep -c "$((CURRENT_YEAR + 1))" debian/changelog || echo "0")
           if [ "$FUTURE_DATES" -gt 0 ]; then
-            echo "⚠️  Found $FUTURE_DATES future date(s) in debian/changelog"
+            echo "WARNING: Found $FUTURE_DATES future date(s) in debian/changelog"
             echo "Dates will be corrected automatically"
           fi
         fi
         
-        echo "✅ Project validation passed"
+        echo "SUCCESS: Project validation passed"
         echo "should_release=true" >> $GITHUB_OUTPUT
 
     - name: Calculate new version
@@ -125,7 +125,7 @@ jobs:
         
         if [ -n "${{ inputs.custom_version }}" ]; then
           NEW_VERSION="${{ inputs.custom_version }}"
-          echo "🎯 Using custom version: $NEW_VERSION"
+          echo "Using custom version: $NEW_VERSION"
         else
           # Calculate version increment
           IFS='.' read -ra VERSION_PARTS <<< "$CURRENT_VERSION"
@@ -149,23 +149,23 @@ jobs:
           esac
           
           NEW_VERSION="$MAJOR.$MINOR.$PATCH"
-          echo "📈 Calculated ${{ inputs.version_type }} increment: $CURRENT_VERSION → $NEW_VERSION"
+          echo "CALCULATED: ${{ inputs.version_type }} increment: $CURRENT_VERSION → $NEW_VERSION"
         fi
         
         # Validate new version format
         if ! [[ $NEW_VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-          echo "❌ Invalid new version format: $NEW_VERSION"
+          echo "ERROR: Invalid new version format: $NEW_VERSION"
           exit 1
         fi
         
         # Check if tag already exists
         if git rev-parse "v$NEW_VERSION" >/dev/null 2>&1; then
-          echo "❌ Tag v$NEW_VERSION already exists!"
+          echo "ERROR: Tag v$NEW_VERSION already exists!"
           exit 1
         fi
         
         echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-        echo "✅ New version: $NEW_VERSION"
+        echo "SUCCESS: New version: $NEW_VERSION"
 
   # Job 2: Update version files and create changelog
   update-version:
@@ -194,7 +194,7 @@ jobs:
         NEW_VERSION="${{ needs.validate-and-prepare.outputs.new_version }}"
         OLD_VERSION="${{ needs.validate-and-prepare.outputs.current_version }}"
         
-        echo "📝 Updating version from $OLD_VERSION to $NEW_VERSION..."
+        echo "Updating version from $OLD_VERSION to $NEW_VERSION..."
         
         # Make version.sh executable and update
         chmod +x ./version.sh
@@ -204,10 +204,10 @@ jobs:
         
         # Update using our version script
         if ./version.sh set "$NEW_VERSION"; then
-          echo "✅ Version files updated successfully"
+          echo "SUCCESS: Version files updated successfully"
           echo "success=true" >> $GITHUB_OUTPUT
         else
-          echo "❌ Failed to update version files"
+          echo "ERROR: Failed to update version files"
           echo "success=false" >> $GITHUB_OUTPUT
           exit 1
         fi
@@ -220,7 +220,7 @@ jobs:
           # Fix any future dates
           sed -i "s/$(($CURRENT_YEAR + 1))/$CURRENT_YEAR/g" debian/changelog
           
-          echo "✅ Dates in changelog validated/corrected"
+          echo "SUCCESS: Dates in changelog validated/corrected"
         fi
 
     - name: Update main CHANGELOG.md
@@ -266,7 +266,7 @@ jobs:
           } > CHANGELOG.md
           
           rm CHANGELOG.md.backup
-          echo "✅ CHANGELOG.md updated"
+          echo "SUCCESS: CHANGELOG.md updated"
         fi
 
     - name: Validate updated files
@@ -276,14 +276,14 @@ jobs:
         # Verify VERSION file
         FILE_VERSION=$(cat VERSION)
         if [ "$FILE_VERSION" != "$NEW_VERSION" ]; then
-          echo "❌ VERSION file not updated correctly: $FILE_VERSION"
+          echo "ERROR: VERSION file not updated correctly: $FILE_VERSION"
           exit 1
         fi
         
         # Verify config.py
         if [ -f "config.py" ]; then
           if ! grep -q "APP_VERSION = \"$NEW_VERSION\"" config.py; then
-            echo "❌ config.py not updated correctly"
+            echo "ERROR: config.py not updated correctly"
             exit 1
           fi
         fi
@@ -292,12 +292,12 @@ jobs:
         if [ -f "debian/changelog" ]; then
           DEBIAN_VERSION=$(awk '/^openvpn-manager \(/ {gsub(/[()]/, "", $2); split($2, v, "-"); print v[1]; exit}' debian/changelog)
           if [ "$DEBIAN_VERSION" != "$NEW_VERSION" ]; then
-            echo "❌ debian/changelog not updated correctly: $DEBIAN_VERSION"
+            echo "ERROR: debian/changelog not updated correctly: $DEBIAN_VERSION"
             exit 1
           fi
         fi
         
-        echo "✅ All version files validated successfully"
+        echo "SUCCESS: All version files validated successfully"
 
     - name: Store updated files artifact
       uses: actions/upload-artifact@v4
@@ -353,7 +353,7 @@ jobs:
     - name: Build self-contained .deb package
       id: build
       run: |
-        echo "🔨 Building .deb package..."
+        echo "Building: Building .deb package..."
         
         # Ensure build script is executable
         chmod +x ./build.sh
@@ -364,17 +364,17 @@ jobs:
         
         # Build package
         if ./build.sh; then
-          echo "✅ .deb package built successfully"
+          echo "SUCCESS: .deb package built successfully"
           echo "success=true" >> $GITHUB_OUTPUT
         else
-          echo "❌ .deb package build failed"
+          echo "ERROR: .deb package build failed"
           echo "success=false" >> $GITHUB_OUTPUT
           exit 1
         fi
 
     - name: Build Python distributions
       run: |
-        echo "🐍 Building Python distributions..."
+        echo "PYTHON: Building Python distributions..."
         python -m build --sdist --wheel
 
     - name: Find and validate artifacts
@@ -386,18 +386,18 @@ jobs:
         DEB_FILE=$(find dist/ -name "openvpn-manager_${NEW_VERSION}*.deb" -type f | head -1)
         if [ -n "$DEB_FILE" ]; then
           echo "deb_file=$DEB_FILE" >> $GITHUB_OUTPUT
-          echo "✅ Found .deb file: $DEB_FILE"
+          echo "SUCCESS: Found .deb file: $DEB_FILE"
           echo "   Size: $(du -sh "$DEB_FILE" | cut -f1)"
           
           # Basic validation
           if dpkg-deb --info "$DEB_FILE" >/dev/null 2>&1; then
-            echo "✅ .deb file structure is valid"
+            echo "SUCCESS: .deb file structure is valid"
           else
-            echo "❌ .deb file is corrupted"
+            echo "ERROR: .deb file is corrupted"
             exit 1
           fi
         else
-          echo "❌ No .deb file found"
+          echo "ERROR: No .deb file found"
           exit 1
         fi
         
@@ -405,7 +405,7 @@ jobs:
         WHEEL_COUNT=$(find dist/ -name "*.whl" | wc -l)
         SDIST_COUNT=$(find dist/ -name "*.tar.gz" | wc -l)
         
-        echo "📦 Built artifacts:"
+        echo "Package: Built artifacts:"
         echo "   - Debian packages: 1"
         echo "   - Python wheels: $WHEEL_COUNT"
         echo "   - Source distributions: $SDIST_COUNT"
@@ -467,9 +467,9 @@ jobs:
                      -m "Update changelog with release notes" \
                      -m "Prepare for release v$NEW_VERSION"
           
-          echo "✅ Version changes committed"
+          echo "SUCCESS: Version changes committed"
         else
-          echo "ℹ️  No version changes to commit"
+          echo "INFO: No version changes to commit"
         fi
 
     - name: Create and push Git tag
@@ -484,7 +484,7 @@ jobs:
         
         # Push tag
         git push origin "v$NEW_VERSION"
-        echo "✅ Tag v$NEW_VERSION created and pushed"
+        echo "SUCCESS: Tag v$NEW_VERSION created and pushed"
 
     - name: Extract release notes
       id: release_notes
@@ -502,15 +502,15 @@ jobs:
           {
             echo "## What's Changed in v$NEW_VERSION"
             echo ""
-            echo "### 🚀 New Features"
+            echo "### Release: New Features"
             echo "- Version bump to $NEW_VERSION"
             echo "- Enhanced build and release process"
             echo ""
-            echo "### 🔧 Improvements"
+            echo "### Fix: Improvements"
             echo "- Updated dependencies and configurations"
             echo "- Improved error handling and validation"
             echo ""
-            echo "### 📦 Installation"
+            echo "### Package: Installation"
             echo "Download the \`.deb\` package from the assets below and install with:"
             echo "\`\`\`bash"
             echo "sudo dpkg -i openvpn-manager_${NEW_VERSION}-1_all.deb"
@@ -547,9 +547,9 @@ jobs:
         NEW_VERSION="${{ needs.validate-and-prepare.outputs.new_version }}"
         OLD_VERSION="${{ needs.validate-and-prepare.outputs.current_version }}"
         
-        echo "## 🎉 Release v$NEW_VERSION Created Successfully!" >> $GITHUB_STEP_SUMMARY
+        echo "## Complete: Release v$NEW_VERSION Created Successfully!" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### 📊 Release Information" >> $GITHUB_STEP_SUMMARY
+        echo "### Status: Release Information" >> $GITHUB_STEP_SUMMARY
         echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
         echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
         echo "| **New Version** | \`v$NEW_VERSION\` |" >> $GITHUB_STEP_SUMMARY
@@ -558,15 +558,15 @@ jobs:
         echo "| **Pre-release** | \`${{ inputs.prerelease }}\` |" >> $GITHUB_STEP_SUMMARY
         echo "| **Trigger** | \`${{ github.event_name }}\` |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### 📦 Built Artifacts" >> $GITHUB_STEP_SUMMARY
-        echo "- ✅ Self-contained Debian Package (.deb)" >> $GITHUB_STEP_SUMMARY
-        echo "- ✅ Python Wheel Distribution (.whl)" >> $GITHUB_STEP_SUMMARY
-        echo "- ✅ Python Source Distribution (.tar.gz)" >> $GITHUB_STEP_SUMMARY
+        echo "### Package: Built Artifacts" >> $GITHUB_STEP_SUMMARY
+        echo "- SUCCESS: Self-contained Debian Package (.deb)" >> $GITHUB_STEP_SUMMARY
+        echo "- SUCCESS: Python Wheel Distribution (.whl)" >> $GITHUB_STEP_SUMMARY
+        echo "- SUCCESS: Python Source Distribution (.tar.gz)" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### 🔗 Quick Links" >> $GITHUB_STEP_SUMMARY
-        echo "- [📋 Release Page](https://github.com/${{ github.repository }}/releases/tag/v$NEW_VERSION)" >> $GITHUB_STEP_SUMMARY
-        echo "- [📝 Full Changelog](https://github.com/${{ github.repository }}/compare/v$OLD_VERSION...v$NEW_VERSION)" >> $GITHUB_STEP_SUMMARY
-        echo "- [💾 Download Assets](https://github.com/${{ github.repository }}/releases/tag/v$NEW_VERSION)" >> $GITHUB_STEP_SUMMARY
+        echo "### LINKS: Quick Links" >> $GITHUB_STEP_SUMMARY
+        echo "- [Summary: Release Page](https://github.com/${{ github.repository }}/releases/tag/v$NEW_VERSION)" >> $GITHUB_STEP_SUMMARY
+        echo "- [Updating: Full Changelog](https://github.com/${{ github.repository }}/compare/v$OLD_VERSION...v$NEW_VERSION)" >> $GITHUB_STEP_SUMMARY
+        echo "- [DOWNLOAD: Download Assets](https://github.com/${{ github.repository }}/releases/tag/v$NEW_VERSION)" >> $GITHUB_STEP_SUMMARY
 
   # Job 5: Dry run summary (only runs in dry-run mode)
   dry-run-summary:
@@ -583,17 +583,17 @@ jobs:
         OLD_VERSION="${{ needs.validate-and-prepare.outputs.current_version }}"
         BUILD_STATUS="${{ needs.build-packages.outputs.build_success }}"
         
-        echo "## 🧪 Dry Run Summary" >> $GITHUB_STEP_SUMMARY
+        echo "## DRY-RUN: Dry Run Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "This was a **dry run** - no actual release was created." >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### 📊 What Would Happen" >> $GITHUB_STEP_SUMMARY
+        echo "### Status: What Would Happen" >> $GITHUB_STEP_SUMMARY
         echo "| Step | Status | Details |" >> $GITHUB_STEP_SUMMARY
         echo "|------|--------|---------|" >> $GITHUB_STEP_SUMMARY
-        echo "| **Validation** | ✅ Passed | Project structure and versions are consistent |" >> $GITHUB_STEP_SUMMARY
-        echo "| **Version Update** | ${{ needs.update-version.outputs.version_updated == 'true' && '✅ Success' || '❌ Failed' }} | $OLD_VERSION → $NEW_VERSION |" >> $GITHUB_STEP_SUMMARY
-        echo "| **Package Build** | ${{ needs.build-packages.outputs.build_success == 'true' && '✅ Success' || '❌ Failed' }} | .deb, .whl, and .tar.gz files |" >> $GITHUB_STEP_SUMMARY
-        echo "| **Release Creation** | ⏸️ Skipped | Would create release v$NEW_VERSION |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Validation** | SUCCESS: Passed | Project structure and versions are consistent |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Version Update** | ${{ needs.update-version.outputs.version_updated == 'true' && 'SUCCESS: Success' || 'ERROR: Failed' }} | $OLD_VERSION → $NEW_VERSION |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Package Build** | ${{ needs.build-packages.outputs.build_success == 'true' && 'SUCCESS: Success' || 'ERROR: Failed' }} | .deb, .whl, and .tar.gz files |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Release Creation** | SKIPPED | Would create release v$NEW_VERSION |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### ▶️ Next Steps" >> $GITHUB_STEP_SUMMARY
+        echo "### NEXT: Next Steps" >> $GITHUB_STEP_SUMMARY
         echo "To create the actual release, run this workflow again with **dry_run** set to \`false\`." >> $GITHUB_STEP_SUMMARY
