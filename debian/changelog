@@ -1,8 +1,11 @@
-openvpn-manager (0.2.7-1) unstable; urgency=medium
+openvpn-manager (0.2.8-1) unstable; urgency=medium
 
-  * Version bump to 0.2.7
+  * Version bump to 0.2.8
+  * Fix GitHub Actions workflows and update to v4
+  * Remove future dates from changelog
+  * Improve workflow triggers and error handling
 
- -- Iágson Carlos Lima Silva <iagsoncarlos@gmail.com>  Sun, 21 Sep 2025 23:21:39 +0000
+ -- Iágson Carlos Lima Silva <iagsoncarlos@gmail.com>  Sat, 21 Sep 2024 23:21:39 +0000
 
 openvpn-manager (0.2.6-1) unstable; urgency=medium
 

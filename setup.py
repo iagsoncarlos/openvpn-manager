@@ -6,8 +6,16 @@ No imports from project modules to avoid dependency issues during build
 from setuptools import setup
 import os
 
-# Hardcoded version - will be updated by version.sh - FIXED
-VERSION = "0.2.7"
+# Read version from VERSION file
+def get_version():
+    """Read version from VERSION file"""
+    try:
+        with open('VERSION', 'r', encoding='utf-8') as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        raise RuntimeError("VERSION file not found")
+
+VERSION = get_version()
 
 # Find all wheel files (only for .deb builds)
 wheels_dir = 'build-enhanced/wheels'

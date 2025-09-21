@@ -4,25 +4,42 @@ Configuration file for OpenVPN Manager
 Contains application metadata and version information
 """
 
+
+# Read version from VERSION file
+def _get_version():
+    """Read version from VERSION file"""
+    try:
+        import os
+        version_file = os.path.join(os.path.dirname(__file__), 'VERSION')
+        with open(version_file, 'r', encoding='utf-8') as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        return "unknown"
+
+
 # Application Information
 APP_NAME = "OpenVPN Manager"
-APP_VERSION = "0.2.7"
+APP_VERSION = _get_version()
 ORGANIZATION_NAME = "Iágson Carlos Lima Silva"
 ORGANIZATION_EMAIL = "iagsoncarlos@gmail.com"
+
 
 # Application Details
 APP_DESCRIPTION = "A PyQt6-based OpenVPN connection manager"
 APP_URL = "https://github.com/iagsoncarlos/openvpn-manager"
 
+
 # Development Information
 DEVELOPMENT_STATUS = "3 - Alpha"
 LICENSE = "MIT License"
+
 
 # Python Requirements
 PYTHON_REQUIRES = ">=3.10"
 REQUIRED_PACKAGES = [
     "PyQt6>=6.4.0",
 ]
+
 
 # System Requirements
 SYSTEM_PACKAGES = [
@@ -40,17 +57,20 @@ SYSTEM_PACKAGES = [
     "iputils-ping",         # Network connectivity testing
 ]
 
+
 # Optional packages that enhance functionality
 OPTIONAL_PACKAGES = [
     "network-manager-openvpn",       # NetworkManager OpenVPN plugin
-    "network-manager-openvpn-gnome", # GNOME integration
+    "network-manager-openvpn-gnome",  # GNOME integration
     "openvpn-systemd-resolved",      # systemd-resolved integration
 ]
+
 
 # File Information
 ICON_FILE = "resources/vpn.png"
 DESKTOP_FILE = "debian/openvpn-manager.desktop"
 POLICY_FILE = "debian/org.example.openvpn-manager.policy"
+
 
 def get_app_info():
     """Returns application information as a dictionary"""
@@ -66,9 +86,11 @@ def get_app_info():
         "icon": ICON_FILE
     }
 
+
 def get_version_string():
     """Returns formatted version string"""
     return f"{APP_NAME} v{APP_VERSION}"
+
 
 def get_developer_string():
     """Returns formatted developer string"""
