@@ -81,6 +81,10 @@ update_version_in_files() {
         local temp_changelog=$(mktemp)
         local current_date=$(date -R)
         
+        # Ensure we're using the current year (not future dates)
+        local current_year=$(date +%Y)
+        current_date=$(date -R | sed "s/[0-9]\{4\}/$current_year/")
+        
         echo "openvpn-manager ($new_version-1) unstable; urgency=medium" > "$temp_changelog"
         echo "" >> "$temp_changelog"
         echo "  * Version bump to $new_version" >> "$temp_changelog"
