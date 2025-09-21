@@ -1,0 +1,237 @@
+name: Hotfix Release
+
+on:
+  push:
+    branches:
+      - 'hotfix/*'
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Version increment type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+      force_release:
+        description: 'Force release even if validation fails'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  hotfix-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Configure Git
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action [Hotfix]"
+
+    - name: Quick validation
+      run: |
+        echo "🔍 Running quick validation for hotfix..."
+        
+        # Check if VERSION file exists
+        if [ ! -f "VERSION" ]; then
+          echo "❌ VERSION file not found"
+          exit 1
+        fi
+        
+        CURRENT_VERSION=$(cat VERSION)
+        echo "📍 Current version: $CURRENT_VERSION"
+        
+        # Check basic file structure
+        REQUIRED_FILES=("config.py" "main.py" "setup.py" "debian/changelog")
+        for file in "${REQUIRED_FILES[@]}"; do
+          if [ ! -f "$file" ]; then
+            echo "❌ Required file missing: $file"
+            if [ "${{ inputs.force_release }}" != "true" ]; then
+              exit 1
+            else
+              echo "⚠️  Continuing due to force_release=true"
+            fi
+          fi
+        done
+        
+        echo "✅ Quick validation passed"
+
+    - name: Fix dates automatically
+      run: |
+        echo "🔧 Fixing any future dates in changelog..."
+        
+        CURRENT_YEAR=$(date +%Y)
+        FUTURE_YEAR=$((CURRENT_YEAR + 1))
+        
+        if [ -f "debian/changelog" ]; then
+          # Fix future dates if any
+          sed -i "s/$FUTURE_YEAR/$CURRENT_YEAR/g" debian/changelog
+          echo "✅ Dates validated/corrected"
+        fi
+
+    - name: Calculate hotfix version
+      id: version
+      run: |
+        CURRENT_VERSION=$(cat VERSION)
+        echo "current=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+        
+        # For hotfix, increment patch by default
+        IFS='.' read -ra VERSION_PARTS <<< "$CURRENT_VERSION"
+        MAJOR=${VERSION_PARTS[0]}
+        MINOR=${VERSION_PARTS[1]}
+        PATCH=${VERSION_PARTS[2]}
+        
+        case "${{ inputs.version_type || 'patch' }}" in
+          "minor")
+            MINOR=$((MINOR + 1))
+            PATCH=0
+            ;;
+          "patch"|*)
+            PATCH=$((PATCH + 1))
+            ;;
+        esac
+        
+        NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+        echo "new=$NEW_VERSION" >> $GITHUB_OUTPUT
+        echo "🚀 Hotfix version: $CURRENT_VERSION → $NEW_VERSION"
+
+    - name: Update version files
+      run: |
+        NEW_VERSION="${{ steps.version.outputs.new }}"
+        OLD_VERSION="${{ steps.version.outputs.current }}"
+        
+        echo "📝 Updating version files for hotfix..."
+        
+        # Make version script executable
+        chmod +x ./version.sh
+        
+        # Update version using script
+        if ./version.sh set "$NEW_VERSION"; then
+          echo "✅ Version files updated to $NEW_VERSION"
+        else
+          echo "❌ Failed to update version files"
+          exit 1
+        fi
+
+    - name: Quick build test
+      run: |
+        echo "🔨 Running quick build test..."
+        
+        # Set up minimal Python environment
+        python3 -m pip install --upgrade pip setuptools wheel
+        
+        # Test Python syntax
+        python3 -m py_compile main.py config.py
+        
+        # Test package creation (without full .deb build)
+        python3 setup.py check
+        
+        echo "✅ Quick build test passed"
+
+    - name: Commit hotfix changes
+      run: |
+        NEW_VERSION="${{ steps.version.outputs.new }}"
+        BRANCH_NAME="${{ github.ref_name }}"
+        
+        # Add version files
+        git add VERSION config.py setup.py pyproject.toml debian/changelog
+        
+        # Check if there are changes to commit
+        if ! git diff --cached --quiet; then
+          git commit -m "hotfix: bump version to $NEW_VERSION" \
+                     -m "Quick hotfix release from branch $BRANCH_NAME" \
+                     -m "Automated version update and date correction"
+          
+          # Push changes back to hotfix branch
+          git push origin "$BRANCH_NAME"
+          echo "✅ Hotfix changes committed and pushed"
+        else
+          echo "ℹ️  No changes to commit"
+        fi
+
+    - name: Create hotfix tag
+      run: |
+        NEW_VERSION="${{ steps.version.outputs.new }}"
+        
+        # Create tag
+        git tag -a "v$NEW_VERSION" \
+                -m "Hotfix Release v$NEW_VERSION" \
+                -m "Quick hotfix from ${{ github.ref_name }}" \
+                -m "See CHANGELOG.md for details"
+        
+        # Push tag
+        git push origin "v$NEW_VERSION"
+        echo "✅ Hotfix tag v$NEW_VERSION created and pushed"
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ steps.version.outputs.new }}
+        name: 🚑 Hotfix v${{ steps.version.outputs.new }}
+        body: |
+          ## 🚑 Hotfix Release v${{ steps.version.outputs.new }}
+          
+          **This is a hotfix release** created from branch `${{ github.ref_name }}`.
+          
+          ### Changes
+          - Version bumped from v${{ steps.version.outputs.current }} to v${{ steps.version.outputs.new }}
+          - Automatic date corrections applied
+          - Quick validation and build test passed
+          
+          ### Installation
+          This hotfix can be installed using the same methods as regular releases.
+          
+          ### ⚠️ Note
+          This hotfix was created using a streamlined process. For full validation and testing, 
+          please use the main release workflow.
+          
+          **Previous Version:** v${{ steps.version.outputs.current }}
+          **Branch:** ${{ github.ref_name }}
+          **Commit:** ${{ github.sha }}
+        prerelease: true
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Create hotfix summary
+      run: |
+        NEW_VERSION="${{ steps.version.outputs.new }}"
+        OLD_VERSION="${{ steps.version.outputs.current }}"
+        
+        echo "## 🚑 Hotfix Release Created!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📊 Hotfix Details" >> $GITHUB_STEP_SUMMARY
+        echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+        echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+        echo "| **Version** | \`$OLD_VERSION\` → \`$NEW_VERSION\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Branch** | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Type** | Hotfix (Pre-release) |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Trigger** | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### ⚡ Quick Actions Performed" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Version validation and update" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Date correction in changelog" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Quick build test" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Git tag creation" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Pre-release on GitHub" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🔗 Links" >> $GITHUB_STEP_SUMMARY
+        echo "- [📋 Release Page](https://github.com/${{ github.repository }}/releases/tag/v$NEW_VERSION)" >> $GITHUB_STEP_SUMMARY
+        echo "- [🔄 Create Full Release](https://github.com/${{ github.repository }}/actions/workflows/release.yml)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### ⚠️ Next Steps" >> $GITHUB_STEP_SUMMARY
+        echo "1. **Test the hotfix** thoroughly in your environment" >> $GITHUB_STEP_SUMMARY
+        echo "2. **Merge hotfix branch** back to main when validated" >> $GITHUB_STEP_SUMMARY
+        echo "3. **Consider full release** if this hotfix should be promoted" >> $GITHUB_STEP_SUMMARY

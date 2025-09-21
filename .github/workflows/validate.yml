@@ -2,9 +2,17 @@ name: Validate Project
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: 
+      - main
+      - develop
+      - 'feature/*'
+      - 'bugfix/*'
+      - 'hotfix/*'
+      - 'release/*'
   pull_request:
-    branches: [ main, develop ]
+    branches: 
+      - main
+      - develop
   workflow_dispatch:
 
 permissions:
@@ -200,7 +208,7 @@ jobs:
         fi
 
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: success()
       with:
         name: test-build-artifacts
