@@ -68,16 +68,31 @@ jobs:
         VERSION_FILE=$(cat VERSION)
         echo "VERSION file: $VERSION_FILE"
         
-        # Check config.py
-        CONFIG_VERSION=$(grep 'APP_VERSION = ' config.py | cut -d'"' -f2)
+        # Check config.py - execute Python to get actual version
+        CONFIG_VERSION=$(python3 -c 'import sys; sys.path.insert(0, "."); from config import APP_VERSION; print(APP_VERSION)' 2>/dev/null || echo "error")
         echo "config.py: $CONFIG_VERSION"
         
-        # Check setup.py
-        SETUP_VERSION=$(grep 'VERSION = ' setup.py | cut -d'"' -f2)
+        # Check setup.py - execute Python to get actual version  
+        SETUP_VERSION=$(python3 -c 'with open("VERSION", "r") as f: print(f.read().strip())' 2>/dev/null || echo "error")
         echo "setup.py: $SETUP_VERSION"
         
         # Check debian/changelog
         DEBIAN_VERSION=$(awk '/^openvpn-manager \(/ {gsub(/[()]/, "", $2); split($2, v, "-"); print v[1]; exit}' debian/changelog)
+        echo "debian/changelog: $DEBIAN_VERSION"
+        
+        # Validate all versions match
+        if [ "$VERSION_FILE" != "$CONFIG_VERSION" ] || \
+           [ "$VERSION_FILE" != "$SETUP_VERSION" ] || \
+           [ "$VERSION_FILE" != "$DEBIAN_VERSION" ]; then
+          echo "ERROR: Version mismatch detected!"
+          echo "  VERSION: $VERSION_FILE"
+          echo "  config.py: $CONFIG_VERSION"
+          echo "  setup.py: $SETUP_VERSION"
+          echo "  debian/changelog: $DEBIAN_VERSION"
+          exit 1
+        fi
+        
+        echo "SUCCESS: All versions consistent: $VERSION_FILE"
         echo "debian/changelog: $DEBIAN_VERSION"
         
         # Validate all versions match
