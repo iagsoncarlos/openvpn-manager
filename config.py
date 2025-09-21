@@ -4,9 +4,20 @@ Configuration file for OpenVPN Manager
 Contains application metadata and version information
 """
 
+# Read version from VERSION file
+def _get_version():
+    """Read version from VERSION file"""
+    try:
+        import os
+        version_file = os.path.join(os.path.dirname(__file__), 'VERSION')
+        with open(version_file, 'r', encoding='utf-8') as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        return "unknown"
+
 # Application Information
 APP_NAME = "OpenVPN Manager"
-APP_VERSION = "0.2.7"
+APP_VERSION = _get_version()
 ORGANIZATION_NAME = "Iágson Carlos Lima Silva"
 ORGANIZATION_EMAIL = "iagsoncarlos@gmail.com"
 
