@@ -45,7 +45,7 @@ jobs:
     - name: Fix future dates in changelog
       if: inputs.fix_dates || github.event_name == 'schedule'
       run: |
-        echo "🔧 Checking for future dates in changelog..."
+        echo "Fix: Checking for future dates in changelog..."
         
         CURRENT_YEAR=$(date +%Y)
         FUTURE_YEAR=$((CURRENT_YEAR + 1))
@@ -55,12 +55,12 @@ jobs:
           FUTURE_COUNT=$(grep -c "$FUTURE_YEAR" debian/changelog || echo "0")
           
           if [ "$FUTURE_COUNT" -gt 0 ]; then
-            echo "⚠️  Found $FUTURE_COUNT future date(s) in debian/changelog"
+            echo "WARNING: Found $FUTURE_COUNT future date(s) in debian/changelog"
             
             # Fix future dates
             sed -i "s/$FUTURE_YEAR/$CURRENT_YEAR/g" debian/changelog
             
-            echo "✅ Fixed future dates in debian/changelog"
+            echo "SUCCESS: Fixed future dates in debian/changelog"
             
             # Commit the fix
             git add debian/changelog
@@ -70,16 +70,16 @@ jobs:
                          -m "Automated fix by maintenance workflow"
               
               git push origin main
-              echo "📝 Changes committed and pushed"
+              echo "Updating: Changes committed and pushed"
             fi
           else
-            echo "✅ No future dates found in changelog"
+            echo "SUCCESS: No future dates found in changelog"
           fi
         fi
 
     - name: Validate project consistency
       run: |
-        echo "🔍 Running consistency checks..."
+        echo "Validating: Running consistency checks..."
         
         # Check version consistency
         VERSION_FILE=$(cat VERSION 2>/dev/null || echo "")
@@ -106,28 +106,28 @@ jobs:
               esac
               
               if [ "$VERSION_FILE" != "$FILE_VERSION" ]; then
-                echo "❌ Version mismatch in $file: expected $VERSION_FILE, found $FILE_VERSION"
+                echo "ERROR: Version mismatch in $file: expected $VERSION_FILE, found $FILE_VERSION"
                 INCONSISTENT=true
               else
-                echo "✅ $file version matches: $FILE_VERSION"
+                echo "SUCCESS: $file version matches: $FILE_VERSION"
               fi
             fi
           done
           
           if [ "$INCONSISTENT" = true ]; then
-            echo "⚠️  Version inconsistencies detected. Consider running version.sh to fix."
+            echo "WARNING: Version inconsistencies detected. Consider running version.sh to fix."
             
             # Create an issue or notification (optional)
-            echo "🔧 To fix, run: ./version.sh set $VERSION_FILE"
+            echo "Fix: To fix, run: ./version.sh set $VERSION_FILE"
           else
-            echo "✅ All versions are consistent"
+            echo "SUCCESS: All versions are consistent"
           fi
         fi
 
     - name: Check dependency status
       if: inputs.update_dependencies
       run: |
-        echo "📦 Checking dependency status..."
+        echo "Package: Checking dependency status..."
         
         # Check if pip-audit is available for security check
         if command -v pip &> /dev/null; then
@@ -137,17 +137,17 @@ jobs:
           if [ -f "setup.py" ] && grep -q "install_requires" setup.py; then
             echo "Checking setup.py dependencies..."
             # This is a simplified check - in a real scenario you'd parse setup.py properly
-            echo "ℹ️  Manual dependency review recommended"
+            echo "INFO: Manual dependency review recommended"
           fi
         fi
         
         # Check for known security issues in the ecosystem
-        echo "ℹ️  Consider running 'pip-audit' locally for security checks"
+        echo "INFO: Consider running 'pip-audit' locally for security checks"
 
     - name: Clean old build artifacts
       if: inputs.cleanup_artifacts || github.event_name == 'schedule'
       run: |
-        echo "🧹 Cleaning old build artifacts..."
+        echo "Cleaning: Cleaning old build artifacts..."
         
         # Clean local build artifacts
         rm -rf build/ dist/ *.egg-info/ .pybuild/
@@ -161,17 +161,17 @@ jobs:
           rm -f debian/files debian/*.substvars
         fi
         
-        echo "✅ Local artifacts cleaned"
+        echo "SUCCESS: Local artifacts cleaned"
 
     - name: Generate maintenance report
       run: |
-        echo "📊 Generating maintenance report..."
+        echo "Status: Generating maintenance report..."
         
         CURRENT_VERSION=$(cat VERSION 2>/dev/null || echo "unknown")
         CURRENT_DATE=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
         
         {
-          echo "# 🔧 Maintenance Report"
+          echo "# Fix: Maintenance Report"
           echo ""
           echo "**Generated:** $CURRENT_DATE"
           echo "**Current Version:** $CURRENT_VERSION"
@@ -179,15 +179,15 @@ jobs:
           echo "## Actions Performed"
           echo ""
           if [ "${{ inputs.fix_dates }}" = "true" ] || [ "${{ github.event_name }}" = "schedule" ]; then
-            echo "- ✅ Checked and fixed future dates in changelog"
+            echo "- SUCCESS: Checked and fixed future dates in changelog"
           fi
           if [ "${{ inputs.cleanup_artifacts }}" = "true" ] || [ "${{ github.event_name }}" = "schedule" ]; then
-            echo "- ✅ Cleaned old build artifacts"
+            echo "- SUCCESS: Cleaned old build artifacts"
           fi
           if [ "${{ inputs.update_dependencies }}" = "true" ]; then
-            echo "- ✅ Checked dependency status"
+            echo "- SUCCESS: Checked dependency status"
           fi
-          echo "- ✅ Validated project consistency"
+          echo "- SUCCESS: Validated project consistency"
           echo ""
           echo "## System Status"
           echo ""
@@ -204,7 +204,7 @@ jobs:
           
         } >> $GITHUB_STEP_SUMMARY
         
-        echo "✅ Maintenance report generated"
+        echo "SUCCESS: Maintenance report generated"
 
   # Separate job for cleaning GitHub Actions artifacts
   cleanup-actions-artifacts:
