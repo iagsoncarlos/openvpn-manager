@@ -40,15 +40,31 @@ jobs:
 
     - name: Update files
       run: |
-        # Update debian/changelog
+        # Create new changelog entry
         CURRENT_DATE=$(date -R)
-        sed -i "1s/.*/openvpn-manager ($NEW_VERSION-1) unstable; urgency=medium/" debian/changelog
-        sed -i "3s/.*/  * Version $NEW_VERSION/" debian/changelog
-        sed -i "5s/.*/ -- Iágson Carlos Lima Silva <iagsoncarlos@gmail.com>  $CURRENT_DATE/" debian/changelog
+        
+        # Backup current changelog
+        cp debian/changelog debian/changelog.bak
+        
+        # Create new changelog with proper format
+        {
+          echo "openvpn-manager ($NEW_VERSION-1) unstable; urgency=medium"
+          echo ""
+          echo "  * Version $NEW_VERSION"
+          echo "  * Auto-generated release"
+          echo ""
+          echo " -- Iágson Carlos Lima Silva <iagsoncarlos@gmail.com>  $CURRENT_DATE"
+          echo ""
+          # Append old changelog (skip first entry)
+          tail -n +9 debian/changelog.bak
+        } > debian/changelog
+        
+        rm debian/changelog.bak
 
     - name: Build package
       run: |
         chmod +x ./build.sh
+        ./build.sh
         ./build.sh
 
     - name: Commit and tag
