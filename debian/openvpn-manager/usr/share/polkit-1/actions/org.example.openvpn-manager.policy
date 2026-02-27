@@ -6,6 +6,19 @@
   <vendor>OpenVPN Manager</vendor>
   <vendor_url>https://github.com/iagsoncarlos/openvpn-manager</vendor_url>
   
+  <action id="org.example.openvpn-manager.launch">
+    <description>Launch OpenVPN Manager</description>
+    <description xml:lang="pt_BR">Iniciar OpenVPN Manager</description>
+    <message>Authentication is required to launch OpenVPN Manager</message>
+    <message xml:lang="pt_BR">Autenticação necessária para iniciar o OpenVPN Manager</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/env</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
   <action id="org.example.openvpn-manager.run-openvpn">
     <description>Run OpenVPN with administrator privileges</description>
     <description xml:lang="pt_BR">Executar OpenVPN com privilégios administrativos</description>
@@ -46,3 +59,4 @@
     <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
   </action>
 </policyconfig>
+

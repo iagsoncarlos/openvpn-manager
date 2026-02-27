@@ -14,4 +14,4 @@ f528fd146d21c587b8e059a93ae13cf0  usr/share/openvpn-manager/wheels/pyqt6_qt6-6.1
 0dba0adfe748dec5e48947be408f0db1  usr/share/openvpn-manager/wheels/pyqt6_sip-13.11.0-cp312-cp312-manylinux1_x86_64.manylinux_2_5_x86_64.whl
 db4a37ca70b4a5d6c2913e1b7e274137  usr/share/pixmaps/openvpn-manager.png
 db4a37ca70b4a5d6c2913e1b7e274137  usr/share/pixmaps/vpn.png
-5a09bad4304e71be7641b6923a7b7926  usr/share/polkit-1/actions/org.example.openvpn-manager.policy
+0117de8f5714a957c61f8fa307e1ad3b  usr/share/polkit-1/actions/org.example.openvpn-manager.policy
