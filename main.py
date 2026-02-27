@@ -30,7 +30,11 @@ import re # For regular expressions to parse network interface output
 
 # Import application configuration
 try:
-    from config import APP_NAME, APP_VERSION, ORGANIZATION_NAME, get_app_info, get_developer_string, get_version_string
+    from config import (
+        APP_NAME, APP_VERSION, ORGANIZATION_NAME,
+        get_app_info, get_developer_string, get_version_string,
+        OPENVPN_DNS_SCRIPT
+    )
 except ImportError as e:
     print(f"ERRO: Não foi possível importar configuração: {e}")
     print("Verifique se o arquivo config.py está presente e no PYTHONPATH")
@@ -94,9 +98,46 @@ class OpenVPNThread(QThread):
                 '--config', self.config_path,
                 '--verb', '3',
                 '--script-security', '2',
-                '--up', '/etc/openvpn/update-resolv-conf',
-                '--down', '/etc/openvpn/update-resolv-conf'
             ]
+
+            # Prefer the classic update-resolv-conf script, but fall back to
+            # the systemd helper if available. If neither exists, omit the
+            # --up/--down options to avoid OpenVPN failing on missing scripts.
+            selected_dns_script = None
+
+            # If config explicitly sets a path, prefer that (even if not
+            # executable) but warn if it's missing. Otherwise auto-detect.
+            try:
+                if OPENVPN_DNS_SCRIPT:
+                    if os.path.exists(OPENVPN_DNS_SCRIPT) and os.access(OPENVPN_DNS_SCRIPT, os.X_OK):
+                        selected_dns_script = OPENVPN_DNS_SCRIPT
+                    else:
+                        self.output_received.emit(
+                            f"Warning: configured OPENVPN_DNS_SCRIPT '{OPENVPN_DNS_SCRIPT}' not found or not executable; falling back to auto-detect"
+                        )
+            except Exception:
+                # If config import fails for any reason, fall back to auto-detect
+                pass
+
+            if not selected_dns_script:
+                dns_script_candidates = [
+                    '/etc/openvpn/update-resolv-conf',
+                    '/etc/openvpn/update-systemd-resolved'
+                ]
+                for s in dns_script_candidates:
+                    if os.path.exists(s) and os.access(s, os.X_OK):
+                        selected_dns_script = s
+                        break
+
+            if selected_dns_script:
+                cmd.extend(['--up', selected_dns_script, '--down', selected_dns_script])
+            else:
+                try:
+                    self.output_received.emit('Warning: no DNS update script found; skipping --up/--down options')
+                except Exception:
+                    pass
+                except Exception:
+                    pass
             
             if self.username and self.password:
                 import tempfile
@@ -410,6 +451,7 @@ class OpenVPNGUI(QMainWindow):
         self.vpn_interface_name = None # To store the name of the active VPN interface
         self.init_ui()
         self.setup_timer()
+        self._closing_after_disconnect = False
 
     def init_ui(self):
         self.setWindowTitle(APP_NAME)
@@ -728,6 +770,9 @@ class OpenVPNGUI(QMainWindow):
         except Exception as e:
             self.log_output.append(f"Error checking OpenVPN processes: {e}")
 
+        # ensure we only change state after cleanup; this helps avoid racing
+        # where the UI might close unexpectedly. We'll set is_connected False
+        # here but defer final close if requested via _closing_after_disconnect.
         self.is_connected = False
         self.btn_connect.setEnabled(True)
         self.btn_disconnect.setEnabled(False)
@@ -743,6 +788,15 @@ class OpenVPNGUI(QMainWindow):
         self.data_received_label.setText("Data Received: 0 KB")
         self.connection_start_time = None
         self.vpn_interface_name = None
+
+        # If the user requested application close after disconnect, perform it now
+        if getattr(self, '_closing_after_disconnect', False):
+            self._closing_after_disconnect = False
+            # Close the main window now that disconnection has been performed
+            try:
+                self.close()
+            except Exception:
+                pass
 
 
     def on_status_changed(self, status):
@@ -813,6 +867,13 @@ class OpenVPNGUI(QMainWindow):
              self.data_received_label.setText("Data Received: 0 KB")
              self.connection_start_time = None
              self.vpn_interface_name = None
+        # If a close was requested while thread was cleaning up, close now
+        if getattr(self, '_closing_after_disconnect', False) and not self.is_connected:
+            self._closing_after_disconnect = False
+            try:
+                self.close()
+            except Exception:
+                pass
 
     def update_status(self):
         # Check if OpenVPN is actually running
@@ -994,11 +1055,16 @@ class OpenVPNGUI(QMainWindow):
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
             if reply == QMessageBox.StandardButton.Yes:
-                self.disconnect_vpn()
-                # Don't close the application, just disconnect
+                # Request disconnect first and close once it's done
+                self._closing_after_disconnect = True
+                try:
+                    self.disconnect_vpn()
+                except Exception:
+                    pass
                 event.ignore()
                 return
             else:
+                # User chose not to exit; keep running
                 event.ignore()
                 return
         event.accept()

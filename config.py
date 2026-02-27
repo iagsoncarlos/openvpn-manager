@@ -9,11 +9,39 @@ Contains application metadata and version information
 def _get_version():
     """Read version from VERSION file"""
     try:
-        import os
-        version_file = os.path.join(os.path.dirname(__file__), 'VERSION')
-        with open(version_file, 'r', encoding='utf-8') as f:
-            return f.read().strip()
-    except FileNotFoundError:
+        from pathlib import Path
+
+        # 1) Same directory as this file
+        base = Path(__file__).resolve().parent
+        candidate = base / 'VERSION'
+        if candidate.exists():
+            return candidate.read_text(encoding='utf-8').strip()
+
+        # 2) Walk up a few parents (project root may be above the package dir)
+        cur = base
+        for _ in range(4):
+            cur = cur.parent
+            candidate = cur / 'VERSION'
+            if candidate.exists():
+                return candidate.read_text(encoding='utf-8').strip()
+
+        # 3) Try package metadata names that are commonly used
+        try:
+            from importlib.metadata import version, PackageNotFoundError
+            for pkg_name in ("openvpn-manager", "openvpn_manager", "openvpn-manager-py", "openvpn_manager-py"):
+                try:
+                    v = version(pkg_name)
+                    if v:
+                        return v
+                except PackageNotFoundError:
+                    continue
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        return "unknown"
+    except Exception:
         return "unknown"
 
 
@@ -95,3 +123,9 @@ def get_version_string():
 def get_developer_string():
     """Returns formatted developer string"""
     return f"Developed by {ORGANIZATION_NAME}"
+
+
+# Optional override for the DNS update script path used with OpenVPN
+# Set to None to let the application auto-detect; otherwise provide the
+# full path to the helper script (for example '/etc/openvpn/update-resolv-conf')
+OPENVPN_DNS_SCRIPT = None
