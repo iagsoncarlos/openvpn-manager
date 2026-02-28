@@ -1048,25 +1048,56 @@ class OpenVPNGUI(QMainWindow):
         # Debug: log close event
         print("DEBUG: closeEvent called")
         
+        # Always confirm exit with the user.
         if self.is_connected:
-            reply = QMessageBox.question(
-                self, "VPN Connected",
-                "There is an active VPN connection. Do you want to disconnect before exiting?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            msg = (
+                "There is an active VPN connection.\n"
+                "Closing the application will disconnect the VPN.\n\n"
+                "Do you really want to exit?"
             )
-            if reply == QMessageBox.StandardButton.Yes:
-                # Request disconnect first and close once it's done
-                self._closing_after_disconnect = True
-                try:
-                    self.disconnect_vpn()
-                except Exception:
-                    pass
-                event.ignore()
-                return
-            else:
-                # User chose not to exit; keep running
-                event.ignore()
-                return
+        else:
+            msg = "Do you really want to close the application?"
+
+        reply = QMessageBox.question(
+            self, "Exit Confirmation",
+            msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            event.ignore()
+            return
+
+        # If the user confirmed and we're connected, attempt a best-effort
+        # disconnection in the background and allow the application to exit
+        # immediately. We start a detached pkill (or use pkexec/sudo when
+        # available) so the OS will stop OpenVPN even after the GUI exits.
+        if self.is_connected:
+            try:
+                # Prefer direct pkill when running as root
+                if os.getuid() == 0:
+                    cmd = ['pkill', '-TERM', 'openvpn']
+                    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                else:
+                    # Try pkexec first, then sudo, finally fallback to direct pkill
+                    if shutil.which('pkexec'):
+                        cmd = ['pkexec', 'pkill', '-TERM', 'openvpn']
+                        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                    elif shutil.which('sudo'):
+                        cmd = ['sudo', 'pkill', '-TERM', 'openvpn']
+                        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                    else:
+                        # Last-ditch: try direct pkill (may fail without privileges)
+                        cmd = ['pkill', '-TERM', 'openvpn']
+                        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            except Exception:
+                # Best-effort only; ignore any errors and proceed to exit
+                pass
+
+            # Don't wait for cleanup inside the GUI process; exit immediately
+            event.accept()
+            return
+
         event.accept()
 
 def main():
