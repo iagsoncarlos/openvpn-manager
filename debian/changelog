@@ -1,10 +1,9 @@
-openvpn-manager (0.2.9-1) unstable; urgency=medium
+openvpn-manager (0.2.10-1) unstable; urgency=medium
 
-  * Version 0.2.9
+  * Version 0.2.10
   * Auto-generated release
 
- -- Iágson Carlos Lima Silva <iagsoncarlos@gmail.com>  Mon, 22 Sep 2025 00:28:41 +0000
-
+ -- Iágson Carlos Lima Silva <iagsoncarlos@gmail.com>  Thu, 12 Mar 2026 19:07:52 +0000
 
 openvpn-manager (0.2.6-1) unstable; urgency=medium
 
