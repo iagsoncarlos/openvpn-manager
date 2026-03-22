@@ -6,1099 +6,1249 @@ import shutil
 from pathlib import Path
 from typing import Dict, Optional
 
-# Check PyQt6 availability before importing
 try:
     from PyQt6.QtWidgets import (
         QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget,
         QPushButton, QLabel, QListWidget, QTextEdit, QFileDialog,
-        QMessageBox, QProgressBar, QGroupBox, QLineEdit,
-        QTabWidget, QListWidgetItem, QComboBox, QFormLayout,
-        QDialog, QDialogButtonBox
+        QMessageBox, QGroupBox, QLineEdit, QTabWidget, QListWidgetItem,
+        QComboBox, QFormLayout, QDialog, QDialogButtonBox, QFrame,
+        QScrollArea, QStackedWidget, QSizePolicy, QSpacerItem, QStyledItemDelegate, QStyle
     )
-    from PyQt6.QtCore import QTimer, QThread, pyqtSignal, Qt
-    from PyQt6.QtGui import QFont, QIcon
+    from PyQt6.QtCore import QTimer, QThread, pyqtSignal, Qt, QSize, QPoint, QRect, QEvent
+    from PyQt6.QtGui import (
+        QFont, QIcon, QPainter, QColor, QPen, QPixmap, QPainterPath,
+        QLinearGradient, QBrush, QPalette, QConicalGradient, QRadialGradient
+    )
 except ImportError as e:
-    print(f"ERRO: PyQt6 não está instalado ou não pode ser importado: {e}")
-    print("\nPossíveis soluções:")
-    print("1. Instalar via apt: sudo apt install python3-pyqt6")
-    print("2. Instalar via pip: pip3 install PyQt6")
-    print("3. Verificar se o pacote foi instalado corretamente")
+    print(f"ERROR: PyQt6 not installed: {e}")
     sys.exit(1)
 
 import datetime
-import re # For regular expressions to parse network interface output
+import re
+import math
 
-# Import application configuration
+
+# ── Custom ComboBox Delegate with Accent Hover Effect ──────────────────────────
+class AccentHoverDelegate(QStyledItemDelegate):
+    """Custom delegate for ComboBox that highlights items with accent color on hover."""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._hover_index = -1
+    
+    def paint(self, painter, option, index):
+        """Paint item with custom hover highlighting in accent color."""
+        # Check if this is the hovered item
+        is_hover = index.row() == self._hover_index
+        is_selected = bool(option.state & QStyle.StateFlag.State_Selected)
+        
+        # Paint background
+        if is_selected or is_hover:
+            # Use accent color for both hover and selected states with full opacity
+            color = QColor(Colors.ORANGE)
+            color.setAlpha(255)  # Full opacity for maximum contrast
+            painter.fillRect(option.rect, color)
+            
+            # Add slight border for extra definition
+            painter.setPen(QColor(255, 255, 255, 60))  # Subtle white border
+            painter.drawRect(option.rect.adjusted(0, 0, -1, -1))
+        else:
+            painter.fillRect(option.rect, QColor(Colors.BG_ELEV))
+        
+        # Paint text - white on accent background for best contrast
+        if is_selected or is_hover:
+            painter.setPen(QColor(255, 255, 255))  # White text on accent
+        else:
+            painter.setPen(QColor(Colors.TXT_PRI))
+        
+        painter.setFont(option.font)
+        painter.drawText(option.rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, 
+                        '  ' + index.data())
+    
+    def editorEvent(self, event, model, option, index):
+        """Track mouse hover position."""
+        from PyQt6.QtCore import QEvent
+        if event.type() == QEvent.Type.MouseMove:
+            self._hover_index = index.row()
+        elif event.type() == QEvent.Type.Leave:
+            self._hover_index = -1
+        return super().editorEvent(event, model, option, index)
+
+
+# ── Config fallback ──────────────────────────────────────────────────────────
 try:
     from config import (
         APP_NAME, APP_VERSION, ORGANIZATION_NAME,
-        get_app_info, get_developer_string, get_version_string,
-        OPENVPN_DNS_SCRIPT
+        get_developer_string, get_version_string, OPENVPN_DNS_SCRIPT
     )
-except ImportError as e:
-    print(f"ERRO: Não foi possível importar configuração: {e}")
-    print("Verifique se o arquivo config.py está presente e no PYTHONPATH")
-    sys.exit(1)
+except ImportError:
+    APP_NAME = "OpenVPN Connect"
+    APP_VERSION = "3.5.0"
+    ORGANIZATION_NAME = "OpenVPN Inc."
+    OPENVPN_DNS_SCRIPT = None
+    def get_developer_string(): return "OpenVPN Connect"
+    def get_version_string(): return f"v{APP_VERSION}"
 
-def run_privileged_command(cmd, **kwargs):
-    """Run a privileged command. 
-    
-    If already running as root, execute directly.
-    Otherwise, use pkexec/sudo for privilege escalation.
-    
-    cmd: list without sudo/pkexec prefix (e.g. ['pkill','-TERM','openvpn'])
-    Returns CompletedProcess
-    """
-    # If we're already running as root, execute directly
+# ── Theme — ALL colors live here, reads from GNOME/Ubuntu gsettings ───────────
+from theme import ThemeManager, Colors
+
+
+# ── CSS builders — rebuilt on every theme change ─────────────────────────────
+
+def build_main_css() -> str:
+    c = Colors
+    ar, ag, ab = c.accent_rgb()
+    return f"""
+QMainWindow {{ background: {c.BG_BASE}; }}
+QWidget {{ font-family: 'Ubuntu', 'Noto Sans', 'Segoe UI', sans-serif; }}
+
+#Sidebar {{
+    background: {c.BG_SIDEBAR};
+    border-right: 1px solid {c.BORDER};
+}}
+
+QPushButton#NavBtn {{
+    background: transparent;
+    color: {c.TXT_MUT};
+    border: none;
+    border-radius: 0;
+    text-align: left;
+    padding: 0 16px;
+    font-size: 12px;
+    min-height: 44px;
+}}
+QPushButton#NavBtn:checked {{
+    background: rgba({ar},{ag},{ab},38);
+    color: {c.ORANGE};
+    border-left: 3px solid {c.ORANGE};
+}}
+QPushButton#NavBtn:hover:!checked {{
+    background: rgba(255,255,255,13);
+    color: {c.TXT_SEC};
+}}
+
+#Content {{ background: {c.BG_BASE}; }}
+
+#Card {{
+    background: {c.BG_CARD};
+    border: 1px solid {c.BORDER};
+    border-radius: 8px;
+}}
+
+QComboBox {{
+    background: {c.BG_ELEV};
+    color: {c.TXT_PRI};
+    border: 1px solid {c.BORDER_LT};
+    border-radius: 5px;
+    padding: 0 10px;
+    font-size: 12px;
+    min-height: 32px;
+}}
+QComboBox:hover {{ 
+    border: 2px solid {c.ORANGE};
+    padding: 0 9px;
+}}
+QComboBox:focus {{ 
+    border: 2px solid {c.ORANGE};
+    padding: 0 9px;
+    background: {c.BG_SURF};
+}}
+QComboBox::drop-down {{ 
+    border: none; 
+    width: 22px;
+    background: transparent;
+}}
+QComboBox QAbstractItemView {{
+    background: {c.BG_ELEV};
+    color: {c.TXT_PRI};
+    border: 1px solid {c.BORDER_LT};
+    border-radius: 4px;
+    outline: none;
+    margin: 0px;
+    padding: 0px;
+}}
+QComboBox QAbstractItemView::item {{
+    height: 28px;
+    padding: 4px 12px;
+}}
+QComboBox QAbstractItemView {{ 
+    selection-background-color: rgba({ar},{ag},{ab},128);
+    selection-color: {c.ORANGE};
+}}
+
+QListWidget {{
+    background: {c.BG_CARD};
+    color: {c.TXT_PRI};
+    border: 1px solid {c.BORDER};
+    border-radius: 6px;
+    outline: none;
+    font-size: 12px;
+}}
+QListWidget::item {{ padding: 7px 12px; border-radius: 4px; }}
+QListWidget::item:hover {{ background: {c.BG_ELEV}; }}
+QListWidget::item:selected {{
+    background: rgba({ar},{ag},{ab},64);
+    color: {c.ORANGE};
+}}
+
+QTextEdit {{
+    background: {c.BG_BASE};
+    color: {c.LOG_TEXT};
+    border: 1px solid {c.BORDER};
+    border-radius: 6px;
+    padding: 8px;
+    font-family: 'Ubuntu Mono', 'Courier New', monospace;
+    font-size: 11px;
+}}
+
+QScrollBar:vertical {{ background: transparent; width: 5px; margin: 0; }}
+QScrollBar::handle:vertical {{
+    background: {c.BORDER_LT}; border-radius: 2px; min-height: 16px;
+}}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+
+QPushButton#ConnectBtn {{
+    background: {c.ORANGE};
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    font-size: 12px;
+    font-weight: 600;
+    min-height: 34px;
+    padding: 5px 20px;
+}}
+QPushButton#ConnectBtn:hover   {{ background: {c.ORANGE_L}; }}
+QPushButton#ConnectBtn:pressed {{ background: {c.ORANGE_D}; }}
+QPushButton#ConnectBtn:disabled {{
+    background: {c.BG_ELEV};
+    color: {c.TXT_MUT};
+    border: 1px solid {c.BORDER};
+}}
+
+QPushButton#DisconnectBtn {{
+    background: {c.RED_DARK};
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    font-size: 12px;
+    font-weight: 600;
+    min-height: 34px;
+    padding: 5px 20px;
+}}
+QPushButton#DisconnectBtn:hover   {{ background: {c.RED_ERR};  }}
+QPushButton#DisconnectBtn:pressed {{ background: {c.RED_DEEP}; }}
+
+QPushButton#SmBtn {{
+    background: {c.BG_ELEV};
+    color: {c.TXT_SEC};
+    border: 1px solid {c.BORDER};
+    border-radius: 5px;
+    padding: 5px 12px;
+    font-size: 11px;
+    min-height: 28px;
+}}
+QPushButton#SmBtn:hover {{
+    background: {c.BORDER};
+    color: {c.TXT_PRI};
+    border-color: {c.BORDER_LT};
+}}
+QPushButton#SmBtn[danger="true"] {{ color: {c.RED_ERR}; }}
+QPushButton#SmBtn[danger="true"]:hover {{
+    background: rgba(231,76,60,38);
+    border-color: {c.RED_ERR};
+}}
+
+QPushButton#AddBtn {{
+    background: rgba({ar},{ag},{ab},38);
+    color: {c.ORANGE};
+    border: 1px solid rgba({ar},{ag},{ab},77);
+    border-radius: 5px;
+    padding: 5px 14px;
+    font-size: 11px;
+    font-weight: 600;
+    min-height: 28px;
+}}
+QPushButton#AddBtn:hover {{ background: rgba({ar},{ag},{ab},71); }}
+"""
+
+
+def build_dialog_css() -> str:
+    c = Colors
+    return f"""
+QDialog {{ background: {c.BG_BASE}; }}
+QLabel {{ color: {c.TXT_SEC}; font-size: 12px; }}
+QLabel#title {{ color: {c.TXT_PRI}; font-size: 13px; font-weight: 600; }}
+QLineEdit {{
+    background: {c.BG_ELEV};
+    color: {c.TXT_PRI};
+    border: 1px solid {c.BORDER_LT};
+    border-radius: 5px;
+    padding: 7px 10px;
+    font-size: 12px;
+    selection-background-color: {c.ORANGE};
+}}
+QLineEdit:focus {{ border-color: {c.ORANGE}; }}
+QPushButton {{
+    background: {c.BG_ELEV};
+    color: {c.TXT_SEC};
+    border: 1px solid {c.BORDER};
+    border-radius: 5px;
+    padding: 7px 14px;
+    font-size: 12px;
+}}
+QPushButton:hover {{ background: {c.BORDER}; color: {c.TXT_PRI}; }}
+QPushButton#ok {{
+    background: {c.ORANGE};
+    color: #fff;
+    border: none;
+    font-weight: 600;
+}}
+QPushButton#ok:hover   {{ background: {c.ORANGE_L}; }}
+QPushButton#ok:pressed {{ background: {c.ORANGE_D}; }}
+"""
+
+
+# ── Misc helpers ──────────────────────────────────────────────────────────────
+
+def run_privileged(cmd, **kwargs):
     if os.getuid() == 0:
         return subprocess.run(cmd, **kwargs)
-    
-    # Otherwise, use privilege escalation
-    full_cmd = None
-    if shutil.which('pkexec'):
-        full_cmd = ['pkexec'] + cmd
-    else:
-        full_cmd = ['sudo'] + cmd
-    return subprocess.run(full_cmd, **kwargs)
+    tool = 'pkexec' if shutil.which('pkexec') else 'sudo'
+    return subprocess.run([tool] + cmd, **kwargs)
 
+
+def fmt_bytes(b):
+    if b is None: return "—"
+    if b < 1024:    return f"{b} B"
+    if b < 1024**2: return f"{b/1024:.1f} KB"
+    if b < 1024**3: return f"{b/1024**2:.2f} MB"
+    return f"{b/1024**3:.2f} GB"
+
+
+def fmt_dur(secs):
+    h, r = divmod(max(int(secs), 0), 3600)
+    m, s = divmod(r, 60)
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+
+def h_rule():
+    f = QFrame(); f.setFrameShape(QFrame.Shape.HLine)
+    f.setStyleSheet(f"color: {Colors.BORDER};")
+    return f
+
+
+# ── Animated Status Dot ───────────────────────────────────────────────────────
+
+class StatusDot(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._state = "off"
+        self._angle = 0
+        self._pulse = 0.0
+        self._pd = 1
+        self.setFixedSize(56, 56)
+        t = QTimer(self); t.timeout.connect(self._tick); t.start(25)
+
+    def set_state(self, s):
+        self._state = s; self.update()
+
+    def _tick(self):
+        if self._state == "spinning":
+            self._angle = (self._angle + 8) % 360
+        self._pulse += 0.05 * self._pd
+        if self._pulse >= 1: self._pd = -1
+        elif self._pulse <= 0: self._pd = 1
+        self.update()
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        cx, cy, r = 28, 28, 20
+        accent = QColor(Colors.ORANGE)
+
+        if self._state == "on":
+            glow = int(18 + 12 * self._pulse)
+            for gr in [r + 9, r + 5]:
+                p.setPen(Qt.PenStyle.NoPen)
+                gc = QColor(accent); gc.setAlpha(glow); p.setBrush(gc)
+                p.drawEllipse(cx - gr, cy - gr, gr * 2, gr * 2)
+
+        pen = QPen(QColor(Colors.BORDER_LT)); pen.setWidth(5)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        p.setPen(pen); p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawEllipse(cx - r, cy - r, r * 2, r * 2)
+
+        if self._state == "on":
+            pen = QPen(accent); pen.setWidth(5)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            p.setPen(pen)
+            p.drawEllipse(cx - r, cy - r, r * 2, r * 2)
+        elif self._state == "spinning":
+            grad = QConicalGradient(cx, cy, self._angle)
+            ar, ag, ab = accent.red(), accent.green(), accent.blue()
+            grad.setColorAt(0.0, QColor(ar, ag, ab, 255))
+            grad.setColorAt(0.4, QColor(ar, ag, ab, 80))
+            grad.setColorAt(0.9, QColor(ar, ag, ab, 0))
+            arc_pen = QPen(QBrush(grad), 5)
+            arc_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            p.setPen(arc_pen)
+            p.drawEllipse(cx - r, cy - r, r * 2, r * 2)
+
+        p.setPen(Qt.PenStyle.NoPen); p.setBrush(QColor(Colors.BG_ELEV))
+        p.drawEllipse(cx - r + 7, cy - r + 7, (r - 7) * 2, (r - 7) * 2)
+
+        if self._state == "on":
+            self._draw_shield(p, cx, cy, True)
+        elif self._state == "spinning":
+            alpha = int(120 + 120 * abs(math.sin(math.radians(self._angle))))
+            sc = QColor(accent); sc.setAlpha(alpha); p.setBrush(sc)
+            p.drawEllipse(cx - 3, cy - 3, 6, 6)
+        else:
+            self._draw_shield(p, cx, cy, False)
+
+    def _draw_shield(self, p, cx, cy, active):
+        color = QColor(Colors.ORANGE) if active else QColor(Colors.TXT_MUT)
+        p.setPen(Qt.PenStyle.NoPen); p.setBrush(color)
+        path = QPainterPath()
+        path.moveTo(cx, cy - 7); path.lineTo(cx + 6, cy - 4)
+        path.lineTo(cx + 6, cy + 1)
+        path.quadTo(cx + 6, cy + 7, cx, cy + 9)
+        path.quadTo(cx - 6, cy + 7, cx - 6, cy + 1)
+        path.lineTo(cx - 6, cy - 4); path.closeSubpath()
+        p.fillPath(path, color)
+        if active:
+            pen = QPen(QColor(Colors.BG_ELEV)); pen.setWidth(2)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            p.setPen(pen); p.setBrush(Qt.BrushStyle.NoBrush)
+            p.drawLine(int(cx - 3), int(cy + 1), int(cx), int(cy + 4))
+            p.drawLine(int(cx), int(cy + 4), int(cx + 4), int(cy - 2))
+
+
+# ── Mini Traffic Chart ────────────────────────────────────────────────────────
+
+class TinyChart(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.ups, self.dns = [], []
+        self.setMinimumHeight(40)
+
+    def push(self, up, dn):
+        self.ups.append(max(up, 0)); self.dns.append(max(dn, 0))
+        if len(self.ups) > 80: self.ups.pop(0)
+        if len(self.dns) > 80: self.dns.pop(0)
+        self.update()
+
+    def clear(self):
+        self.ups, self.dns = [], []; self.update()
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w, h = self.width(), self.height()
+        p.fillRect(0, 0, w, h, QColor(Colors.BG_BASE))
+        n = max(len(self.ups), len(self.dns))
+        if n < 2: return
+        pk = max(max(self.ups, default=0), max(self.dns, default=0), 1.0)
+
+        def series(pts, hex_col, alpha):
+            if len(pts) < 2: return
+            fill = QPainterPath(); line = QPainterPath()
+            for i, v in enumerate(pts):
+                x = int(w * i / (n - 1)); y = int(h - h * v / pk)
+                if i == 0:
+                    fill.moveTo(x, h); fill.lineTo(x, y); line.moveTo(x, y)
+                else:
+                    fill.lineTo(x, y); line.lineTo(x, y)
+            fill.lineTo(w, h); fill.closeSubpath()
+            fc = QColor(hex_col); fc.setAlpha(alpha); p.fillPath(fill, fc)
+            pen = QPen(QColor(hex_col)); pen.setWidth(1)
+            p.setPen(pen); p.setBrush(Qt.BrushStyle.NoBrush); p.drawPath(line)
+
+        series(self.dns, Colors.ORANGE, 45)
+        series(self.ups, Colors.BLUE_UP, 35)
+
+
+# ── VPN Thread ────────────────────────────────────────────────────────────────
 
 class OpenVPNThread(QThread):
-    """Thread to run OpenVPN without blocking the UI"""
-    status_changed = pyqtSignal(str)
-    output_received = pyqtSignal(str)
-    # Modified signal to also pass the VPN interface name
+    status_changed         = pyqtSignal(str)
+    output_received        = pyqtSignal(str)
     connection_established = pyqtSignal(str)
-    connection_failed = pyqtSignal(str)
-    finished_cleanup = pyqtSignal()
+    connection_failed      = pyqtSignal(str)
+    finished_cleanup       = pyqtSignal()
 
-    def __init__(self, config_path: str, username: str = None, password: str = None):
+    def __init__(self, config_path, username=None, password=None):
         super().__init__()
         self.config_path = config_path
         self.username = username
         self.password = password
         self.process = None
         self.should_stop = False
-        self.auth_file = None # Store auth_file path at class level
-        self.vpn_interface_name = None # To store the name of the VPN interface
+        self.auth_file = None
+        self.vpn_iface = None
+        self.temp_config = None
+
+    def _prepare_config(self, config_path):
+        try:
+            with open(config_path, 'r') as f:
+                lines = f.readlines()
+            filtered = []; removed = set()
+            for line in lines:
+                s = line.strip()
+                if s.startswith('up ') or s.startswith('down '):
+                    parts = s.split(None, 1)
+                    if len(parts) > 1:
+                        script = parts[1].strip().strip('\'"')
+                        if not (os.path.exists(script) and os.access(script, os.X_OK)):
+                            removed.add(script); continue
+                filtered.append(line)
+            if not removed:
+                return config_path
+            for sc in removed:
+                self.output_received.emit(f"⚠ Skipping missing script: {sc}")
+            import tempfile
+            fd, self.temp_config = tempfile.mkstemp(suffix='.ovpn', text=True)
+            try:
+                with os.fdopen(fd, 'w') as f: f.writelines(filtered)
+                os.chmod(self.temp_config, 0o600)
+                return self.temp_config
+            except Exception as ex:
+                os.close(fd)
+                if self.temp_config and os.path.exists(self.temp_config):
+                    try: os.unlink(self.temp_config)
+                    except: pass
+                self.temp_config = None; raise ex
+        except Exception as ex:
+            try: self.output_received.emit(f"⚠ Could not preprocess config: {ex}")
+            except: pass
+            return config_path
 
     def run(self):
         try:
-            # If already running as root, use openvpn directly
-            # Otherwise, the launcher should have elevated privileges already
-            if os.getuid() == 0:
-                cmd = ['openvpn']
-            else:
-                # This should not happen if launched properly, but keep as fallback
-                if shutil.which('pkexec'):
-                    cmd = ['pkexec', 'openvpn']
-                else:
-                    cmd = ['sudo', 'openvpn']
-            
-            cmd += [
-                '--config', self.config_path,
-                '--verb', '3',
-                '--script-security', '2',
-            ]
+            if os.getuid() == 0:          cmd = ['openvpn']
+            elif shutil.which('pkexec'):   cmd = ['pkexec', 'openvpn']
+            else:                          cmd = ['sudo', 'openvpn']
 
-            # Prefer the classic update-resolv-conf script, but fall back to
-            # the systemd helper if available. If neither exists, omit the
-            # --up/--down options to avoid OpenVPN failing on missing scripts.
-            selected_dns_script = None
+            cfg = self._prepare_config(self.config_path)
+            cmd += ['--config', cfg, '--verb', '3', '--script-security', '2']
 
-            # If config explicitly sets a path, prefer that (even if not
-            # executable) but warn if it's missing. Otherwise auto-detect.
-            try:
-                if OPENVPN_DNS_SCRIPT:
-                    if os.path.exists(OPENVPN_DNS_SCRIPT) and os.access(OPENVPN_DNS_SCRIPT, os.X_OK):
-                        selected_dns_script = OPENVPN_DNS_SCRIPT
-                    else:
-                        self.output_received.emit(
-                            f"Warning: configured OPENVPN_DNS_SCRIPT '{OPENVPN_DNS_SCRIPT}' not found or not executable; falling back to auto-detect"
-                        )
-            except Exception:
-                # If config import fails for any reason, fall back to auto-detect
-                pass
+            dns = None
+            if OPENVPN_DNS_SCRIPT and os.path.exists(OPENVPN_DNS_SCRIPT) and os.access(OPENVPN_DNS_SCRIPT, os.X_OK):
+                dns = OPENVPN_DNS_SCRIPT
+            if not dns:
+                for s in ['/etc/openvpn/update-resolv-conf', '/etc/openvpn/update-systemd-resolved']:
+                    if os.path.exists(s) and os.access(s, os.X_OK): dns = s; break
+            if dns:
+                cmd += ['--up', dns, '--down', dns]
 
-            if not selected_dns_script:
-                dns_script_candidates = [
-                    '/etc/openvpn/update-resolv-conf',
-                    '/etc/openvpn/update-systemd-resolved'
-                ]
-                for s in dns_script_candidates:
-                    if os.path.exists(s) and os.access(s, os.X_OK):
-                        selected_dns_script = s
-                        break
-
-            if selected_dns_script:
-                cmd.extend(['--up', selected_dns_script, '--down', selected_dns_script])
-            else:
-                try:
-                    self.output_received.emit('Warning: no DNS update script found; skipping --up/--down options')
-                except Exception:
-                    pass
-                except Exception:
-                    pass
-            
             if self.username and self.password:
                 import tempfile
-                # Store the path in the instance variable
-                auth_fd, self.auth_file = tempfile.mkstemp(suffix='_openvpn_auth', text=True)
+                fd, self.auth_file = tempfile.mkstemp(suffix='_ovpn_auth', text=True)
                 try:
-                    with os.fdopen(auth_fd, 'w') as f:
-                        f.write(f"{self.username}\n{self.password}\n")
-                    cmd.extend(['--auth-user-pass', self.auth_file])
+                    with os.fdopen(fd, 'w') as f: f.write(f"{self.username}\n{self.password}\n")
+                    cmd += ['--auth-user-pass', self.auth_file]
                     os.chmod(self.auth_file, 0o600)
-                except Exception as e:
-                    os.close(auth_fd) # Ensure fd is closed on error before raising
-                    # Remove potentially created file on error within this block
+                except Exception as ex:
+                    os.close(fd)
                     if self.auth_file and os.path.exists(self.auth_file):
-                         try:
-                             os.unlink(self.auth_file)
-                         except:
-                             pass
-                    self.auth_file = None # Reset it
-                    raise e # Re-raise the exception
+                        try: os.unlink(self.auth_file)
+                        except: pass
+                    self.auth_file = None; raise ex
 
-            self.status_changed.emit("Connecting...")
-            self.output_received.emit(f"Executing command: {' '.join(cmd)}")
-            
+            self.status_changed.emit("Connecting…")
             self.process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                universal_newlines=True,
-                bufsize=1,
-                preexec_fn=os.setsid
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                universal_newlines=True, bufsize=1, preexec_fn=os.setsid
             )
-
-            connected = False
-            failed = False
+            ok = fail = False
             for line in iter(self.process.stdout.readline, ''):
-                if self.should_stop:
-                    break
+                if self.should_stop: break
                 line = line.strip()
-                if line:
-                    self.output_received.emit(line)
-
-                if not connected and not failed:
-                    # Detect VPN interface name. OpenVPN usually logs this.
-                    # Example: "TUN/TAP device tun0 opened" or "ifconfig_ipv6_remote: tun0"
-                    match_tun = re.search(r'TUN/TAP device (\w+) opened', line)
-                    match_ifconfig = re.search(r'ifconfig_ipv6_remote: (\w+)', line)
-                    if match_tun:
-                        self.vpn_interface_name = match_tun.group(1)
-                    elif match_ifconfig:
-                        self.vpn_interface_name = match_ifconfig.group(1)
-
-                    if any(phrase in line for phrase in [
-                        "Initialization Sequence Completed",
-                        "Sequence Completed",
-                        "VPN tunnel is ready"
-                    ]):
+                if line: self.output_received.emit(line)
+                if not ok and not fail:
+                    m = re.search(r'TUN/TAP device (\w+) opened', line)
+                    if m: self.vpn_iface = m.group(1)
+                    if any(x in line for x in ["Initialization Sequence Completed", "VPN tunnel is ready"]):
                         self.status_changed.emit("Connected")
-                        self.connection_established.emit(self.vpn_interface_name if self.vpn_interface_name else "")
-                        connected = True
-                    elif any(phrase in line for phrase in [
-                        "AUTH_FAILED",
-                        "Authentication failed"
-                    ]):
-                        self.status_changed.emit("Authentication Failed")
-                        self.connection_failed.emit("Invalid credentials")
-                        failed = True
-                    elif any(phrase in line for phrase in [
-                        "TLS Error",
-                        "TLS handshake failed",
-                        "Certificate verification failed"
-                    ]):
-                        self.status_changed.emit("TLS/Certificate Error")
-                        self.connection_failed.emit("Certificate or TLS error")
-                        failed = True
-                    elif any(phrase in line for phrase in [
-                        "Cannot resolve host address",
-                        "Name resolution failure",
-                        "RESOLVE:"
-                    ]):
-                        self.status_changed.emit("DNS Error")
-                        self.connection_failed.emit("Could not resolve server")
-                        failed = True
-                    elif any(phrase in line for phrase in [
-                        "Connection refused",
-                        "Connection timed out",
-                        "Network is unreachable"
-                    ]):
-                        self.status_changed.emit("Network Error")
-                        self.connection_failed.emit("Network connection failed")
-                        failed = True
+                        self.connection_established.emit(self.vpn_iface or ""); ok = True
+                    elif "AUTH_FAILED" in line or "Authentication failed" in line:
+                        self.connection_failed.emit("Authentication failed"); fail = True
+                    elif "TLS Error" in line or "TLS handshake failed" in line:
+                        self.connection_failed.emit("TLS/Certificate error"); fail = True
                     elif "FATAL" in line:
-                        self.status_changed.emit("Fatal Error")
-                        self.connection_failed.emit(f"Fatal error: {line}")
-                        failed = True
+                        self.connection_failed.emit(f"Fatal: {line}"); fail = True
 
-            return_code = self.process.wait()
-
-            if not connected and not failed and not self.should_stop:
-                 error_msg = f"Connection failed - process terminated unexpectedly (code: {return_code})"
-                 if return_code != 0:
-                     error_msg += f". Exit code: {return_code}"
-                 self.connection_failed.emit(error_msg)
-
+            rc = self.process.wait()
+            if not ok and not fail and not self.should_stop:
+                self.connection_failed.emit(f"Connection failed (exit {rc})")
         except PermissionError:
-            self.connection_failed.emit("Permission error - Run as root/sudo")
+            self.connection_failed.emit("Permission denied — run as root/sudo")
         except FileNotFoundError:
-            self.connection_failed.emit("OpenVPN not found - Install the openvpn package")
-        except Exception as e:
-            self.connection_failed.emit(f"Error starting OpenVPN: {str(e)}")
+            self.connection_failed.emit("openvpn not found — install the openvpn package")
+        except Exception as ex:
+            self.connection_failed.emit(str(ex))
         finally:
-            self.cleanup()
-            self.finished_cleanup.emit()
+            self._cleanup(); self.finished_cleanup.emit()
 
-
-    def cleanup(self):
-         """Ensures cleanup of temporary files and attempts to run down script if needed."""
-         if self.auth_file and os.path.exists(self.auth_file):
-             try:
-                 os.unlink(self.auth_file)
-                 self.output_received.emit(f"Temporary authentication file removed.")
-             except Exception as e:
-                 self.output_received.emit(f"Error removing temporary authentication file ({self.auth_file}): {e}")
-             finally:
-                 self.auth_file = None
+    def _cleanup(self):
+        for attr in ('auth_file', 'temp_config'):
+            path = getattr(self, attr)
+            if path and os.path.exists(path):
+                try: os.unlink(path)
+                except: pass
+            setattr(self, attr, None)
 
     def stop(self):
         self.should_stop = True
-        
-        # First, try to kill OpenVPN processes directly
         try:
-            self.output_received.emit("Attempting to stop OpenVPN processes...")
-            
-            # If running as root, use direct commands
-            if os.getuid() == 0:
-                subprocess.run(['pkill', '-TERM', 'openvpn'], capture_output=True, timeout=10)
-                self.output_received.emit("Sent SIGTERM to OpenVPN processes.")
-            else:
-                # Use privilege escalation (should not be needed if launched properly)
-                run_privileged_command(['pkill', '-TERM', 'openvpn'], capture_output=True, timeout=10)
-                self.output_received.emit("Sent SIGTERM to OpenVPN processes via privilege escalation.")
-            
-            # Wait a bit for graceful termination
-            import time
-            time.sleep(2)
-            
-            # Check if any openvpn processes are still running
-            result = subprocess.run(['pgrep', 'openvpn'], capture_output=True)
-            if result.returncode == 0:
-                # Still running, force kill
-                self.output_received.emit("OpenVPN still running, forcing termination...")
-                if os.getuid() == 0:
-                    subprocess.run(['pkill', '-KILL', 'openvpn'], capture_output=True, timeout=10)
-                    self.output_received.emit("Sent SIGKILL to OpenVPN processes.")
-                else:
-                    run_privileged_command(['pkill', '-KILL', 'openvpn'], capture_output=True, timeout=10)
-                    self.output_received.emit("Sent SIGKILL to OpenVPN processes via privilege escalation.")
-            else:
-                self.output_received.emit("OpenVPN processes terminated successfully.")
-                
-        except subprocess.TimeoutExpired:
-            self.output_received.emit("Timeout trying to kill OpenVPN.")
-        except Exception as e:
-            self.output_received.emit(f"Error killing OpenVPN: {e}")
-        
-        # Also try to stop our direct process if it exists
+            kill = ['pkill', '-TERM', 'openvpn']
+            if os.getuid() == 0: subprocess.run(kill, capture_output=True, timeout=10)
+            else: run_privileged(kill, capture_output=True, timeout=10)
+            import time; time.sleep(2)
+            if subprocess.run(['pgrep', 'openvpn'], capture_output=True).returncode == 0:
+                kill9 = ['pkill', '-KILL', 'openvpn']
+                if os.getuid() == 0: subprocess.run(kill9, capture_output=True, timeout=10)
+                else: run_privileged(kill9, capture_output=True, timeout=10)
+        except: pass
         if self.process and self.process.poll() is None:
             try:
-                self.output_received.emit("Stopping local OpenVPN process...")
-                os.killpg(os.getpgid(self.process.pid), subprocess.signal.SIGTERM)
-
-                try:
-                    self.process.wait(timeout=5)
-                    self.output_received.emit("Local OpenVPN process terminated gracefully.")
+                import signal as _sig
+                os.killpg(os.getpgid(self.process.pid), _sig.SIGTERM)
+                try: self.process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
-                    self.output_received.emit("Timeout waiting for local process, forcing SIGKILL...")
-                    os.killpg(os.getpgid(self.process.pid), subprocess.signal.SIGKILL)
+                    os.killpg(os.getpgid(self.process.pid), _sig.SIGKILL)
                     self.process.wait()
-                    self.output_received.emit("Local OpenVPN process forced to terminate.")
+            except: pass
+            finally: self.process = None
+        self._cleanup()
 
-            except ProcessLookupError:
-                self.output_received.emit("Local OpenVPN process already terminated.")
-            except Exception as e:
-                self.output_received.emit(f"Error stopping local OpenVPN process: {e}")
-                try:
-                   if self.process.poll() is None:
-                       os.killpg(os.getpgid(self.process.pid), subprocess.signal.SIGKILL)
-                       self.process.wait()
-                       self.output_received.emit("Local OpenVPN process forced to terminate after error.")
-                except:
-                   pass
-            finally:
-                self.process = None
-        else:
-            self.output_received.emit("No local OpenVPN process to stop.")
 
-        self.cleanup()
-
+# ── Data models ───────────────────────────────────────────────────────────────
 
 class VPNConfig:
-    """Represents a VPN configuration with user details"""
-    def __init__(self, name: str, config_path: str, username: str = "", password: str = ""):
-        self.name = name
-        self.config_path = config_path
-        self.username = username
-        self.password = password
+    def __init__(self, name, config_path, username="", password=""):
+        self.name = name; self.config_path = config_path
+        self.username = username; self.password = password
+
 
 class ConfigManager:
-    """Manages VPN configurations"""
     def __init__(self):
-        self.config_dir = Path.home() / '.openvpn_gui'
-        self.config_dir.mkdir(exist_ok=True)
-        self.configs_file = self.config_dir / 'configs.json'
-        self.configs = self.load_configs()
+        d = Path.home() / '.openvpn_gui'; d.mkdir(exist_ok=True)
+        self._f = d / 'configs.json'
+        self.configs: Dict[str, VPNConfig] = self._load()
 
-    def load_configs(self) -> Dict[str, VPNConfig]:
-        if self.configs_file.exists():
+    def _load(self):
+        if self._f.exists():
             try:
-                with open(self.configs_file, 'r') as f:
-                    data = json.load(f)
-                    return {k: VPNConfig(**v) for k, v in data.items()}
-            except:
-                return {}
+                with open(self._f) as f:
+                    return {k: VPNConfig(**v) for k, v in json.load(f).items()}
+            except: pass
         return {}
 
-    def save_configs(self):
-        data = {k: v.__dict__ for k, v in self.configs.items()}
-        with open(self.configs_file, 'w') as f:
-            json.dump(data, f, indent=2)
+    def save(self):
+        with open(self._f, 'w') as f:
+            json.dump({k: v.__dict__ for k, v in self.configs.items()}, f, indent=2)
 
-    def add_config(self, config: VPNConfig):
-        self.configs[config.name] = config
-        self.save_configs()
+    def add(self, c): self.configs[c.name] = c; self.save()
+    def remove(self, n):
+        if n in self.configs: del self.configs[n]; self.save()
+    def get(self, n): return self.configs.get(n)
 
-    def remove_config(self, name: str):
-        if name in self.configs:
-            del self.configs[name]
-            self.save_configs()
 
-    def get_config(self, name: str) -> Optional[VPNConfig]:
-        return self.configs.get(name)
+# ── Add / Edit Profile Dialog ─────────────────────────────────────────────────
 
-class AddConfigDialog(QDialog):
-    """Dialog for adding/editing a configuration"""
-    def __init__(self, parent=None, config=None):
+class AddProfileDialog(QDialog):
+    def __init__(self, parent=None, cfg=None):
         super().__init__(parent)
-        self.config = config
-        self.setWindowTitle("Add Configuration" if not config else "Edit Configuration")
-        self.setModal(True)
-        self.resize(350, 250)
-        self.init_ui()
+        self.cfg = cfg
+        self.setWindowTitle("Add Profile" if not cfg else "Edit Profile")
+        self.setModal(True); self.setFixedSize(420, 310)
+        self.setStyleSheet(build_dialog_css()); self._build()
 
-    def init_ui(self):
-        layout = QVBoxLayout(self)
-        form_layout = QFormLayout()
-        self.name_input = QLineEdit()
-        form_layout.addRow("Name:", self.name_input)
-        path_layout = QHBoxLayout()
-        self.path_input = QLineEdit()
-        self.browse_btn = QPushButton("Browse")
-        self.browse_btn.clicked.connect(self.browse_file)
-        path_layout.addWidget(self.path_input)
-        path_layout.addWidget(self.browse_btn)
-        form_layout.addRow(".ovpn File:", path_layout)
-        self.username_input = QLineEdit()
-        form_layout.addRow("Username:", self.username_input)
-        self.password_input = QLineEdit()
-        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
-        form_layout.addRow("Password:", self.password_input)
-        layout.addLayout(form_layout)
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
-        if self.config:
-            self.name_input.setText(self.config.name)
-            self.path_input.setText(self.config.config_path)
-            self.username_input.setText(self.config.username)
-            self.password_input.setText(self.config.password)
+    def _build(self):
+        lay = QVBoxLayout(self); lay.setContentsMargins(22, 20, 22, 20); lay.setSpacing(12)
+        t = QLabel("Profile" if not self.cfg else "Edit Profile")
+        t.setObjectName("title"); lay.addWidget(t)
 
-    def browse_file(self):
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select OpenVPN Configuration File",
-            "",
-            "OpenVPN Config (*.ovpn);;All Files (*)"
-        )
-        if file_path:
-            self.path_input.setText(file_path)
-            if not self.name_input.text():
-                self.name_input.setText(Path(file_path).stem)
+        form = QFormLayout(); form.setVerticalSpacing(8); form.setHorizontalSpacing(14)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
-    def get_data(self):
+        self.name_e = QLineEdit(); self.name_e.setPlaceholderText("My VPN")
+        self.name_e.setMinimumHeight(34); form.addRow("Name:", self.name_e)
+
+        pr = QHBoxLayout(); pr.setSpacing(6)
+        self.path_e = QLineEdit(); self.path_e.setPlaceholderText("config.ovpn")
+        self.path_e.setMinimumHeight(34)
+        brw = QPushButton("…"); brw.setFixedSize(34, 34); brw.clicked.connect(self._browse)
+        pr.addWidget(self.path_e); pr.addWidget(brw); form.addRow(".ovpn:", pr)
+
+        self.user_e = QLineEdit(); self.user_e.setPlaceholderText("optional")
+        self.user_e.setMinimumHeight(34); form.addRow("User:", self.user_e)
+
+        self.pass_e = QLineEdit(); self.pass_e.setPlaceholderText("optional")
+        self.pass_e.setEchoMode(QLineEdit.EchoMode.Password)
+        self.pass_e.setMinimumHeight(34); form.addRow("Pass:", self.pass_e)
+
+        lay.addLayout(form); lay.addStretch()
+        brow = QHBoxLayout(); brow.setSpacing(8)
+        cancel = QPushButton("Cancel"); cancel.setMinimumHeight(34); cancel.clicked.connect(self.reject)
+        ok = QPushButton("Save"); ok.setObjectName("ok"); ok.setMinimumHeight(34)
+        ok.clicked.connect(self.accept)
+        brow.addWidget(cancel); brow.addWidget(ok); lay.addLayout(brow)
+
+        if self.cfg:
+            self.name_e.setText(self.cfg.name); self.path_e.setText(self.cfg.config_path)
+            self.user_e.setText(self.cfg.username); self.pass_e.setText(self.cfg.password)
+
+    def _browse(self):
+        fp, _ = QFileDialog.getOpenFileName(self, "Select .ovpn", "", "OpenVPN (*.ovpn);;All (*)")
+        if fp:
+            self.path_e.setText(fp)
+            if not self.name_e.text(): self.name_e.setText(Path(fp).stem)
+
+    def data(self):
         return {
-            'name': self.name_input.text().strip(),
-            'config_path': self.path_input.text().strip(),
-            'username': self.username_input.text().strip(),
-            'password': self.password_input.text().strip()
+            'name': self.name_e.text().strip(), 'config_path': self.path_e.text().strip(),
+            'username': self.user_e.text().strip(), 'password': self.pass_e.text().strip(),
         }
 
-class OpenVPNGUI(QMainWindow):
+
+# ── Main Window ───────────────────────────────────────────────────────────────
+
+class OpenVPNConnectGUI(QMainWindow):
+
     def __init__(self):
         super().__init__()
-        self.config_manager = ConfigManager()
+        self.cfgman = ConfigManager()
         self.vpn_thread = None
-        self.is_connected = False
-        self.current_config = None
-        self.connection_start_time = None
-        self.vpn_interface_name = None # To store the name of the active VPN interface
-        self.init_ui()
-        self.setup_timer()
-        self._closing_after_disconnect = False
+        self.connected = False
+        self.cur_cfg: Optional[VPNConfig] = None
+        self.start_time = None; self.vpn_iface = None
+        self.sent_pts, self.recv_pts = [], []
+        self.last_sent = self.last_recv = None
+        self.ss_sent = self.ss_recv = None
+        self.sessions = []; self.total_secs = 0; self.sess_final = True
 
-    def init_ui(self):
-        self.setWindowTitle(APP_NAME)
-        self.setWindowIcon(QIcon("resources/vpn.png"))
-        self.setFixedSize(400, 600)  # Increased size for new labels
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
+        # Theme — reads gsettings on startup, watches for live changes
+        self._theme = ThemeManager(self)
+        self._theme.theme_changed.connect(self._apply_theme)
+        self._theme.start()
 
-        main_layout = QVBoxLayout(central_widget)
+        self.setStyleSheet(build_main_css())
+        self._build()
+        self._timer = QTimer(self); self._timer.timeout.connect(self._tick); self._timer.start(1000)
 
-        self.tabs = QTabWidget()
-        main_layout.addWidget(self.tabs)
+    # ── Theme helpers ─────────────────────────────────────────────────────────
 
-        self.connection_tab = self.create_connection_tab()
-        self.tabs.addTab(self.connection_tab, "Connection")
+    def _make_connect_style(self) -> str:
+        c = Colors
+        return (
+            f"QPushButton {{ background: {c.ORANGE}; color: #fff; border: none; "
+            f"border-radius: 5px; font-size: 12px; font-weight: 600; }}"
+            f"QPushButton:hover   {{ background: {c.ORANGE_L}; }}"
+            f"QPushButton:pressed {{ background: {c.ORANGE_D}; }}"
+            f"QPushButton:disabled {{ background: {c.BG_ELEV}; color: {c.TXT_MUT}; "
+            f"border: 1px solid {c.BORDER}; }}"
+        )
 
-        self.management_tab = self.create_management_tab()
-        self.tabs.addTab(self.management_tab, "Management")
+    def _make_disconnect_style(self) -> str:
+        c = Colors
+        return (
+            f"QPushButton {{ background: {c.RED_DARK}; color: #fff; border: none; "
+            f"border-radius: 5px; font-size: 12px; font-weight: 600; }}"
+            f"QPushButton:hover   {{ background: {c.RED_ERR};  }}"
+            f"QPushButton:pressed {{ background: {c.RED_DEEP}; }}"
+        )
 
-        # Developer and Version Information
-        self.developer_label = QLabel(get_developer_string())
-        self.developer_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.developer_label.setFont(QFont("Arial", 8))
-        main_layout.addWidget(self.developer_label)
+    def _apply_theme(self, accent_hex: str, is_dark: bool):
+        """Rebuild all styles when Ubuntu/GNOME theme changes."""
+        self.setStyleSheet(build_main_css())
+        c = Colors
+        self._conn_btn_style_connect    = self._make_connect_style()
+        self._conn_btn_style_disconnect = self._make_disconnect_style()
 
-        self.version_label = QLabel(get_version_string())
-        self.version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.version_label.setFont(QFont("Arial", 8))
-        main_layout.addWidget(self.version_label)
-
-        self.load_config_list()
-
-    def create_connection_tab(self) -> QWidget:
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-
-        selection_group = QGroupBox("Select Configuration")
-        selection_layout = QHBoxLayout(selection_group)
-        self.config_combo = QComboBox()
-        self.config_combo.currentTextChanged.connect(self.on_config_combo_changed)
-        selection_layout.addWidget(QLabel("Configuration:"))
-        selection_layout.addWidget(self.config_combo, 1)
-        layout.addWidget(selection_group)
-
-        status_group = QGroupBox("Connection Status")
-        status_layout = QVBoxLayout(status_group)
-
-        self.status_label = QLabel("Disconnected")
-        self.status_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
-        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.status_label.setStyleSheet("QLabel { color: red; padding: 10px; }")
-        status_layout.addWidget(self.status_label)
-
-        # New labels for connection time and data usage
-        self.connected_time_label = QLabel("Connected Time: 00h 00m 00s")
-        self.data_sent_label = QLabel("Data Sent: 0 KB")
-        self.data_received_label = QLabel("Data Received: 0 KB")
-
-        status_layout.addWidget(self.connected_time_label)
-        status_layout.addWidget(self.data_sent_label)
-        status_layout.addWidget(self.data_received_label)
-
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setVisible(False)
-        status_layout.addWidget(self.progress_bar)
-        layout.addWidget(status_group)
-
-        control_layout = QHBoxLayout()
-        self.btn_connect = QPushButton("Connect")
-        self.btn_connect.clicked.connect(self.connect_vpn)
-        self.btn_connect.setEnabled(False)
-        control_layout.addWidget(self.btn_connect)
-        self.btn_disconnect = QPushButton("Disconnect")
-        self.btn_disconnect.clicked.connect(self.disconnect_vpn)
-        self.btn_disconnect.setEnabled(False)
-        control_layout.addWidget(self.btn_disconnect)
-        layout.addLayout(control_layout)
-
-        log_group = QGroupBox("Connection Log")
-        log_layout = QVBoxLayout(log_group)
-        self.log_output = QTextEdit()
-        self.log_output.setReadOnly(True)
-        self.log_output.setFont(QFont("Courier", 8))
-        log_layout.addWidget(self.log_output)
-        self.btn_clear_log = QPushButton("Clear Log")
-        self.btn_clear_log.clicked.connect(self.log_output.clear)
-        log_layout.addWidget(self.btn_clear_log)
-        layout.addWidget(log_group)
-        return widget
-
-    def create_management_tab(self) -> QWidget:
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-
-        list_group = QGroupBox("Saved Configurations")
-        list_layout = QVBoxLayout(list_group)
-        self.config_list = QListWidget()
-        self.config_list.itemClicked.connect(self.on_config_selected)
-        list_layout.addWidget(self.config_list)
-
-        btn_layout = QHBoxLayout()
-        self.btn_add = QPushButton("Add")
-        self.btn_add.clicked.connect(self.add_config)
-        btn_layout.addWidget(self.btn_add)
-        self.btn_edit = QPushButton("Edit")
-        self.btn_edit.clicked.connect(self.edit_config)
-        self.btn_edit.setEnabled(False)
-        btn_layout.addWidget(self.btn_edit)
-        self.btn_remove = QPushButton("Remove")
-        self.btn_remove.clicked.connect(self.remove_config)
-        self.btn_remove.setEnabled(False)
-        btn_layout.addWidget(self.btn_remove)
-        list_layout.addLayout(btn_layout)
-        layout.addWidget(list_group)
-
-        self.details_group = QGroupBox("Details")
-        self.details_group.setEnabled(False)
-        details_layout = QFormLayout(self.details_group)
-        self.details_name = QLabel()
-        details_layout.addRow("Name:", self.details_name)
-        self.details_path = QLabel()
-        self.details_path.setWordWrap(True)
-        self.details_path.setMinimumSize(0, 30)
-        details_layout.addRow("File:", self.details_path)
-        self.details_username = QLabel()
-        details_layout.addRow("Username:", self.details_username)
-        layout.addWidget(self.details_group)
-        return widget
-
-    def setup_timer(self):
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.update_status)
-        self.timer.start(1000) # Update every second
-
-    def load_config_list(self):
-        self.config_list.clear()
-        self.config_combo.clear()
-        self.config_combo.addItem("")
-        for name in self.config_manager.configs.keys():
-            item = QListWidgetItem(name)
-            self.config_list.addItem(item)
-            self.config_combo.addItem(name)
-
-    def on_config_combo_changed(self, text):
-        if text:
-            config = self.config_manager.get_config(text)
-            if config:
-                self.btn_connect.setEnabled(True)
-                self.current_config = config
-                self.log_output.append(f"Configuration '{text}' selected for connection.")
-            else:
-                self.btn_connect.setEnabled(False)
-                self.current_config = None
+        if self.connected:
+            self._conn_btn.setStyleSheet(self._conn_btn_style_disconnect)
+            self._big_status.setStyleSheet(
+                f"color: {c.ORANGE}; font-size: 14px; font-weight: 700; background: transparent;"
+            )
         else:
-            self.btn_connect.setEnabled(False)
-            self.current_config = None
-
-    def add_config(self):
-        dialog = AddConfigDialog(self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            data = dialog.get_data()
-            if not data['name'] or not data['config_path']:
-                QMessageBox.warning(self, "Error", "Name and configuration file are required.")
-                return
-            if not os.path.exists(data['config_path']):
-                QMessageBox.critical(self, "Error", f"Configuration file not found:\n{data['config_path']}")
-                return
-            config = VPNConfig(**data)
-            self.config_manager.add_config(config)
-            self.load_config_list()
-            self.log_output.append(f"Configuration '{data['name']}' added.")
-
-    def edit_config(self):
-        current_item = self.config_list.currentItem()
-        if current_item:
-            name = current_item.text()
-            config = self.config_manager.get_config(name)
-            if config:
-                dialog = AddConfigDialog(self, config)
-                if dialog.exec() == QDialog.DialogCode.Accepted:
-                    data = dialog.get_data()
-                    if not data['name'] or not data['config_path']:
-                        QMessageBox.warning(self, "Error", "Name and configuration file are required.")
-                        return
-                    if not os.path.exists(data['config_path']):
-                        QMessageBox.critical(self, "Error", f"Configuration file not found:\n{data['config_path']}")
-                        return
-                    if data['name'] != name:
-                        self.config_manager.remove_config(name)
-                    config = VPNConfig(**data)
-                    self.config_manager.add_config(config)
-                    self.load_config_list()
-                    self.log_output.append(f"Configuration '{name}' updated.")
-
-    def remove_config(self):
-        current_item = self.config_list.currentItem()
-        if current_item:
-            name = current_item.text()
-            reply = QMessageBox.question(
-                self, "Confirm Deletion",
-                f"Are you sure you want to delete configuration '{name}'?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            self._conn_btn.setStyleSheet(self._conn_btn_style_connect)
+            self._big_status.setStyleSheet(
+                f"color: {c.TXT_SEC}; font-size: 14px; font-weight: 700; background: transparent;"
             )
-            if reply == QMessageBox.StandardButton.Yes:
-                self.config_manager.remove_config(name)
-                self.load_config_list()
-                self.btn_edit.setEnabled(False)
-                self.btn_remove.setEnabled(False)
-                self.details_group.setEnabled(False)
-                self.log_output.append(f"Configuration '{name}' deleted.")
+        self._up_rate.setStyleSheet(f"color: {c.BLUE_UP}; font-size: 10px; font-weight: 700;")
+        self._dn_rate.setStyleSheet(f"color: {c.ORANGE};  font-size: 10px; font-weight: 700;")
+        self._dot.update()
 
-    def on_config_selected(self, item):
-        config_name = item.text()
-        config = self.config_manager.get_config(config_name)
-        if config:
-            self.btn_edit.setEnabled(True)
-            self.btn_remove.setEnabled(True)
-            self.details_group.setEnabled(True)
-            self.details_name.setText(config.name)
-            self.details_path.setText(config.config_path)
-            self.details_username.setText(config.username if config.username else "None")
-            self.log_output.append(f"Configuration '{config_name}' selected.")
+    # ── Build UI ──────────────────────────────────────────────────────────────
 
-    def connect_vpn(self):
-        if not self.current_config:
-            QMessageBox.warning(self, "Error", "Please select a configuration.")
-            return
-        config_path = self.current_config.config_path
-        if not os.path.exists(config_path):
-            QMessageBox.critical(self, "Error", f"Configuration file not found:\n{config_path}")
-            return
-        try:
-            with open(config_path, 'r') as f:
-                config_content = f.read()
-                if len(config_content.strip()) == 0:
-                    QMessageBox.critical(self, "Error", "Configuration file is empty.")
-                    return
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Could not read configuration file:\n{str(e)}")
-            return
-        username = self.current_config.username
-        password = self.current_config.password
-        if "auth-user-pass" in config_content.lower() and not username:
-            reply = QMessageBox.question(
-                self, "Credentials Required",
-                "This configuration file requires user credentials.\n"
-                "Do you want to continue without credentials? (May fail)",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            if reply != QMessageBox.StandardButton.Yes:
-                return
+    def _build(self):
+        self.setWindowTitle(APP_NAME); self.setMinimumSize(680, 520); self.resize(700, 540)
+        root = QWidget(); self.setCentralWidget(root)
+        rl = QHBoxLayout(root); rl.setContentsMargins(0, 0, 0, 0); rl.setSpacing(0)
 
+        # Sidebar
+        sb = QWidget(); sb.setObjectName("Sidebar"); sb.setFixedWidth(172)
+        sbl = QVBoxLayout(sb); sbl.setContentsMargins(0, 0, 0, 0); sbl.setSpacing(0)
+
+        logo_w = QWidget(); logo_w.setFixedHeight(60)
+        logo_w.setStyleSheet(f"background: {Colors.BG_SIDEBAR};")
+        ll = QHBoxLayout(logo_w); ll.setContentsMargins(0, 0, 0, 0)
+        name_lbl = QLabel("OpenVPN Manager"); name_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        name_lbl.setStyleSheet(
+            f"color: {Colors.TXT_PRI}; font-size: 12px; font-weight: 700; "
+            f"background: transparent; border-right: 1px solid {Colors.BORDER};"
+        )
+        ll.addWidget(name_lbl); sbl.addWidget(logo_w)
+        sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet(f"color: {Colors.BORDER};"); sbl.addWidget(sep)
+        sbl.addSpacing(4)
+
+        self._navbtns = []
+        for icon, label, idx in [("●", "Status", 0), ("☰", "Profiles", 1),
+                                   ("📊", "Stats", 2), ("▶", "Log", 3)]:
+            b = QPushButton(f"  {icon}   {label}"); b.setObjectName("NavBtn"); b.setCheckable(True)
+            b.clicked.connect(lambda _=False, i=idx: self._nav(i))
+            self._navbtns.append(b); sbl.addWidget(b)
+
+        sbl.addStretch()
+        try:   dev_str = get_developer_string()
+        except: dev_str = "OpenVPN Manager"
+        vl = QLabel(f"{dev_str}  ·  v{APP_VERSION}")
+        vl.setAlignment(Qt.AlignmentFlag.AlignCenter); vl.setWordWrap(True)
+        vl.setStyleSheet(f"color: {Colors.TXT_MUT}; font-size: 9px; padding: 6px 8px;")
+        sbl.addWidget(vl); rl.addWidget(sb)
+
+        # Content
+        content = QWidget(); content.setObjectName("Content")
+        cl = QVBoxLayout(content); cl.setContentsMargins(0, 0, 0, 0); cl.setSpacing(0)
+        self.stack = QStackedWidget(); self.stack.setStyleSheet(f"background: {Colors.BG_BASE};")
+        cl.addWidget(self.stack); rl.addWidget(content, 1)
+
+        self.stack.addWidget(self._pg_status())
+        self.stack.addWidget(self._pg_profiles())
+        self.stack.addWidget(self._pg_stats())
+        self.stack.addWidget(self._pg_log())
+        self._nav(0)
+
+    def _nav(self, idx):
+        self.stack.setCurrentIndex(idx)
+        for i, b in enumerate(self._navbtns): b.setChecked(i == idx)
+
+    # ── Status page ───────────────────────────────────────────────────────────
+
+    def _pg_status(self):
+        c = Colors
+        pg = QWidget(); pg.setStyleSheet(f"background: {c.BG_BASE};")
+        lay = QVBoxLayout(pg); lay.setContentsMargins(20, 18, 20, 18); lay.setSpacing(12)
+
+        card = QFrame(); card.setObjectName("Card")
+        cl = QVBoxLayout(card); cl.setContentsMargins(18, 16, 18, 16); cl.setSpacing(10)
+
+        top_row = QHBoxLayout(); top_row.setSpacing(14)
+        self._dot = StatusDot(); top_row.addWidget(self._dot)
+        status_col = QVBoxLayout(); status_col.setSpacing(2)
+        self._big_status = QLabel("Disconnected")
+        self._big_status.setStyleSheet(
+            f"color: {c.TXT_SEC}; font-size: 14px; font-weight: 700; background: transparent;"
+        )
+        self._profile_badge = QLabel("No profile selected")
+        self._profile_badge.setStyleSheet(f"color: {c.TXT_MUT}; font-size: 11px; background: transparent;")
+        status_col.addWidget(self._big_status); status_col.addWidget(self._profile_badge)
+        top_row.addLayout(status_col, 1); cl.addLayout(top_row)
+        cl.addWidget(h_rule())
+
+        prow = QHBoxLayout(); prow.setSpacing(8)
+        pl = QLabel("Profile"); pl.setStyleSheet(f"color: {c.TXT_MUT}; font-size: 11px; min-width: 46px;")
+        self._combo = QComboBox()
+        self._combo.currentTextChanged.connect(self._on_combo)
+        self._combo.setItemDelegate(AccentHoverDelegate(self._combo))
+        prow.addWidget(pl); prow.addWidget(self._combo, 1); cl.addLayout(prow)
+
+        conn_row = QHBoxLayout(); conn_row.setContentsMargins(0, 2, 0, 2)
+        self._conn_btn = QPushButton("Connect"); self._conn_btn.setObjectName("ConnectBtn")
+        self._conn_btn.setEnabled(False); self._conn_btn.setFixedSize(160, 34)
+        self._conn_btn.clicked.connect(self._toggle)
+        self._conn_btn_style_connect    = self._make_connect_style()
+        self._conn_btn_style_disconnect = self._make_disconnect_style()
+        self._conn_btn.setStyleSheet(self._conn_btn_style_connect)
+        conn_row.addStretch(); conn_row.addWidget(self._conn_btn); conn_row.addStretch()
+        cl.addLayout(conn_row); lay.addWidget(card)
+
+        stats_row = QHBoxLayout(); stats_row.setSpacing(8)
+        self._dur_lbl = self._stat_box(stats_row, "Duration",   c.TXT_PRI)
+        self._up_lbl  = self._stat_box(stats_row, "Uploaded",   c.BLUE_UP)
+        self._dn_lbl  = self._stat_box(stats_row, "Downloaded", c.ORANGE)
+        lay.addLayout(stats_row)
+
+        chart_card = QFrame(); chart_card.setObjectName("Card")
+        chart_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        ccl = QVBoxLayout(chart_card); ccl.setContentsMargins(14, 10, 14, 10); ccl.setSpacing(6)
+        chart_hdr = QHBoxLayout()
+        ct = QLabel("Live Traffic")
+        ct.setStyleSheet(f"color: {c.TXT_MUT}; font-size: 9px; font-weight: 600; letter-spacing: 1px;")
+        chart_hdr.addWidget(ct); chart_hdr.addStretch()
+        self._up_rate = QLabel("↑ 0.0 KB/s")
+        self._up_rate.setStyleSheet(f"color: {c.BLUE_UP}; font-size: 10px; font-weight: 700;")
+        self._dn_rate = QLabel("↓ 0.0 KB/s")
+        self._dn_rate.setStyleSheet(f"color: {c.ORANGE}; font-size: 10px; font-weight: 700;")
+        chart_hdr.addWidget(self._up_rate); chart_hdr.addSpacing(12); chart_hdr.addWidget(self._dn_rate)
+        ccl.addLayout(chart_hdr)
+        self._chart = TinyChart()
+        self._chart.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self._chart.setMinimumHeight(60); ccl.addWidget(self._chart, 1)
+        lay.addWidget(chart_card, 1)
+        self._refresh_combo()
+        return pg
+
+    def _stat_box(self, parent_layout, label, color):
+        c = Colors
+        box = QFrame(); box.setObjectName("Card")
+        box.setStyleSheet(
+            f"QFrame#Card {{ background: {c.BG_CARD}; border: 1px solid {c.BORDER}; border-radius: 8px; }}"
+        )
+        bl = QVBoxLayout(box); bl.setContentsMargins(12, 10, 12, 10); bl.setSpacing(2)
+        lbl = QLabel(label.upper())
+        lbl.setStyleSheet(
+            f"color: {c.TXT_MUT}; font-size: 9px; letter-spacing: 0.8px; font-weight: 600; background: transparent;"
+        )
+        val = QLabel("—")
+        val.setStyleSheet(f"color: {color}; font-size: 15px; font-weight: 700; background: transparent;")
+        bl.addWidget(lbl); bl.addWidget(val); parent_layout.addWidget(box, 1)
+        return val
+
+    # ── Profiles page ─────────────────────────────────────────────────────────
+
+    def _pg_profiles(self):
+        c = Colors
+        pg = QWidget(); pg.setStyleSheet(f"background: {c.BG_BASE};")
+        lay = QVBoxLayout(pg); lay.setContentsMargins(20, 18, 20, 18); lay.setSpacing(10)
+        hdr = QHBoxLayout()
+        t = QLabel("Profiles"); t.setStyleSheet(f"color: {c.TXT_PRI}; font-size: 14px; font-weight: 700;")
+        hdr.addWidget(t); hdr.addStretch()
+        ab = QPushButton("＋  Add"); ab.setObjectName("AddBtn"); ab.clicked.connect(self._add_profile)
+        hdr.addWidget(ab); lay.addLayout(hdr)
+        self._profile_list = QListWidget(); self._profile_list.itemClicked.connect(self._on_list_click)
+        lay.addWidget(self._profile_list, 1)
+        btn_row = QHBoxLayout(); btn_row.setSpacing(8)
+        self._edit_btn = QPushButton("✎  Edit"); self._edit_btn.setObjectName("SmBtn")
+        self._edit_btn.setEnabled(False); self._edit_btn.clicked.connect(self._edit_profile)
+        self._del_btn = QPushButton("✕  Delete"); self._del_btn.setObjectName("SmBtn")
+        self._del_btn.setProperty("danger", "true"); self._del_btn.setEnabled(False)
+        self._del_btn.clicked.connect(self._delete_profile)
+        btn_row.addStretch(); btn_row.addWidget(self._edit_btn); btn_row.addWidget(self._del_btn)
+        lay.addLayout(btn_row); self._refresh_list()
+        return pg
+
+    # ── Stats page ────────────────────────────────────────────────────────────
+
+    def _pg_stats(self):
+        c = Colors
+        pg = QWidget(); pg.setStyleSheet(f"background: {c.BG_BASE};")
+        lay = QVBoxLayout(pg); lay.setContentsMargins(20, 18, 20, 18); lay.setSpacing(12)
+        t = QLabel("Statistics"); t.setStyleSheet(f"color: {c.TXT_PRI}; font-size: 14px; font-weight: 700;")
+        lay.addWidget(t)
+        grid = QHBoxLayout(); grid.setSpacing(8)
+        self._st_sess  = self._stat_box(grid, "Sessions",    c.TXT_PRI)
+        self._st_time  = self._stat_box(grid, "Total Time",  c.BLUE_UP)
+        self._st_pk_up = self._stat_box(grid, "Peak Upload", c.BLUE_UP)
+        self._st_pk_dn = self._stat_box(grid, "Peak Down",   c.ORANGE)
+        lay.addLayout(grid)
+        hist_card = QFrame(); hist_card.setObjectName("Card")
+        hcl = QVBoxLayout(hist_card); hcl.setContentsMargins(14, 12, 14, 12); hcl.setSpacing(8)
+        ht = QLabel("Session History")
+        ht.setStyleSheet(f"color: {c.TXT_MUT}; font-size: 9px; font-weight: 600; letter-spacing: 1px;")
+        hcl.addWidget(ht)
+        self._hist_box = QTextEdit(); self._hist_box.setReadOnly(True)
+        self._hist_box.setMinimumHeight(160); hcl.addWidget(self._hist_box)
+        lay.addWidget(hist_card, 1); self._refresh_stats()
+        return pg
+
+    # ── Log page ──────────────────────────────────────────────────────────────
+
+    def _pg_log(self):
+        c = Colors
+        pg = QWidget(); pg.setStyleSheet(f"background: {c.BG_BASE};")
+        lay = QVBoxLayout(pg); lay.setContentsMargins(20, 18, 20, 18); lay.setSpacing(10)
+        hdr = QHBoxLayout()
+        t = QLabel("Log"); t.setStyleSheet(f"color: {c.TXT_PRI}; font-size: 14px; font-weight: 700;")
+        hdr.addWidget(t); hdr.addStretch()
+        clr = QPushButton("Clear"); clr.setObjectName("SmBtn"); clr.setFixedWidth(60)
+        clr.clicked.connect(lambda: self._log_box.clear())
+        hdr.addWidget(clr); lay.addLayout(hdr)
+        self._log_box = QTextEdit(); self._log_box.setReadOnly(True)
+        lay.addWidget(self._log_box, 1)
+        return pg
+
+    # ── Interactions ──────────────────────────────────────────────────────────
+
+    def _refresh_combo(self):
+        self._combo.blockSignals(True); self._combo.clear()
+        self._combo.addItem("— select profile —")
+        for n in self.cfgman.configs: self._combo.addItem(n)
+        if self.cur_cfg:
+            i = self._combo.findText(self.cur_cfg.name)
+            if i >= 0: self._combo.setCurrentIndex(i)
+        self._combo.blockSignals(False)
+
+    def _refresh_list(self):
+        self._profile_list.clear()
+        for n, cfg in self.cfgman.configs.items():
+            item = QListWidgetItem()
+            connected = self.connected and self.cur_cfg and self.cur_cfg.name == n
+            item.setText(f"{'● ' if connected else '  '}{n}  —  {os.path.basename(cfg.config_path)}")
+            self._profile_list.addItem(item)
+        self._edit_btn.setEnabled(False); self._del_btn.setEnabled(False)
+
+    def _on_combo(self, text):
+        if text and text != "— select profile —":
+            cfg = self.cfgman.get(text)
+            if cfg:
+                self.cur_cfg = cfg
+                self._profile_badge.setText(os.path.basename(cfg.config_path))
+                if not self.connected: self._conn_btn.setEnabled(True)
+        else:
+            if not self.connected:
+                self.cur_cfg = None
+                self._profile_badge.setText("No profile selected")
+                self._conn_btn.setEnabled(False)
+
+    def _on_list_click(self, item):
+        self._edit_btn.setEnabled(True); self._del_btn.setEnabled(True)
+
+    def _toggle(self):
+        if self.connected: self._disconnect()
+        else: self._connect()
+
+    def _connect(self):
+        if not self.cur_cfg: return
+        if not os.path.exists(self.cur_cfg.config_path):
+            QMessageBox.critical(self, "Error", f"File not found:\n{self.cur_cfg.config_path}"); return
         self.vpn_thread = OpenVPNThread(
-            config_path,
-            username if username else None,
-            password if password else None
+            self.cur_cfg.config_path, self.cur_cfg.username or None, self.cur_cfg.password or None,
         )
-        self.vpn_thread.status_changed.connect(self.on_status_changed)
-        self.vpn_thread.output_received.connect(self.on_output_received)
-        # Connect to the modified signal to get the interface name
-        self.vpn_thread.connection_established.connect(self.on_connection_established)
-        self.vpn_thread.connection_failed.connect(self.on_connection_failed)
-        self.vpn_thread.finished_cleanup.connect(self.on_thread_finished_cleanup)
-
+        self.vpn_thread.output_received.connect(self._log)
+        self.vpn_thread.connection_established.connect(self._on_connected)
+        self.vpn_thread.connection_failed.connect(self._on_failed)
+        self.vpn_thread.finished_cleanup.connect(self._on_thread_done)
         self.vpn_thread.start()
-        self.btn_connect.setEnabled(False)
-        self.btn_disconnect.setEnabled(True)
-        self.progress_bar.setVisible(True)
-        self.progress_bar.setRange(0, 0)
-        self.log_output.append("=" * 35)
-        self.log_output.append(f"Initiating VPN connection: {self.current_config.name}")
-        self.log_output.append(f"File: {config_path}")
-        self.log_output.append("=" * 35)
+        self._conn_btn.setEnabled(False); self._dot.set_state("spinning")
+        self._big_status.setText("Connecting…")
+        self._big_status.setStyleSheet(
+            f"color: {Colors.ORANGE}; font-size: 14px; font-weight: 700; background: transparent;"
+        )
+        self._reset_live(); self.start_time = None; self.sess_final = True
+        self._log(f"=== Connecting to '{self.cur_cfg.name}' ===")
 
-        # Reset connection time and data labels
-        self.connected_time_label.setText("Connected Time: 00h 00m 00s")
-        self.data_sent_label.setText("Data Sent: 0 KB")
-        self.data_received_label.setText("Data Received: 0 KB")
-        self.connection_start_time = None
-        self.vpn_interface_name = None
-
-
-    def disconnect_vpn(self):
+    def _disconnect(self):
         if self.vpn_thread and self.vpn_thread.isRunning():
-            self.log_output.append("Requesting VPN disconnection...")
-            self.vpn_thread.stop()
-
-            finished_cleanly = self.vpn_thread.wait(15000)
-
-            if not finished_cleanly:
-                self.log_output.append("Waiting for VPN shutdown timed out.")
-                if self.vpn_thread.isRunning():
-                    self.vpn_thread.terminate()
-                    self.vpn_thread.wait(2000)
-                    self.log_output.append("VPN thread forcibly terminated after timeout.")
-        else:
-            self.log_output.append("No active VPN connection to disconnect.")
-
-        # Force check if OpenVPN processes are still running
+            self.vpn_thread.stop(); self.vpn_thread.wait(15000)
         try:
-            result = subprocess.run(['pgrep', 'openvpn'], capture_output=True)
-            if result.returncode == 0:
-                self.log_output.append("OpenVPN processes still detected, forcing termination...")
-                try:
-                    if os.getuid() == 0:
-                        # Running as root, use direct command
-                        subprocess.run(['pkill', '-KILL', 'openvpn'], capture_output=True, timeout=10)
-                    else:
-                        # Use privilege escalation
-                        run_privileged_command(['pkill', '-KILL', 'openvpn'], capture_output=True, timeout=10)
-                    self.log_output.append("Forcibly terminated remaining OpenVPN processes.")
-                except Exception as e:
-                    self.log_output.append(f"Error force-killing OpenVPN: {e}")
-            else:
-                self.log_output.append("All OpenVPN processes successfully terminated.")
-        except Exception as e:
-            self.log_output.append(f"Error checking OpenVPN processes: {e}")
+            r = subprocess.run(['pgrep', 'openvpn'], capture_output=True)
+            if r.returncode == 0:
+                kill = ['pkill', '-KILL', 'openvpn']
+                if os.getuid() == 0: subprocess.run(kill, capture_output=True, timeout=10)
+                else: run_privileged(kill, capture_output=True, timeout=10)
+        except: pass
+        self._finalize("Manual disconnect"); self.connected = False
+        self._apply_disconnected(); self._reset_live()
+        self.start_time = self.vpn_iface = None; self._refresh_list()
 
-        # ensure we only change state after cleanup; this helps avoid racing
-        # where the UI might close unexpectedly. We'll set is_connected False
-        # here but defer final close if requested via _closing_after_disconnect.
-        self.is_connected = False
-        self.btn_connect.setEnabled(True)
-        self.btn_disconnect.setEnabled(False)
-        self.progress_bar.setVisible(False)
-        self.status_label.setText("Disconnected")
-        self.status_label.setStyleSheet("QLabel { color: red; padding: 10px; }")
-        self.log_output.append("VPN disconnected (or disconnection attempt completed).")
-        self.log_output.append("=" * 35)
-
-        # Reset the specific VPN status labels
-        self.connected_time_label.setText("Connected Time: 00h 00m 00s")
-        self.data_sent_label.setText("Data Sent: 0 KB")
-        self.data_received_label.setText("Data Received: 0 KB")
-        self.connection_start_time = None
-        self.vpn_interface_name = None
-
-        # If the user requested application close after disconnect, perform it now
-        if getattr(self, '_closing_after_disconnect', False):
-            self._closing_after_disconnect = False
-            # Close the main window now that disconnection has been performed
-            try:
-                self.close()
-            except Exception:
-                pass
-
-
-    def on_status_changed(self, status):
-        self.status_label.setText(status)
-        if status == "Connected":
-            self.status_label.setStyleSheet("QLabel { color: green; padding: 10px; }")
-        elif "Error" in status or "Failed" in status:
-            self.status_label.setStyleSheet("QLabel { color: red; padding: 10px; }")
-        else:
-            self.status_label.setStyleSheet("QLabel { color: orange; padding: 10px; }")
-
-    def on_output_received(self, output):
-        self.log_output.append(output)
-        self.log_output.verticalScrollBar().setValue(
-            self.log_output.verticalScrollBar().maximum()
+    def _apply_disconnected(self):
+        self._dot.set_state("off")
+        self._big_status.setText("Disconnected")
+        self._big_status.setStyleSheet(
+            f"color: {Colors.TXT_SEC}; font-size: 14px; font-weight: 700; background: transparent;"
         )
+        self._conn_btn.setStyleSheet(self._conn_btn_style_connect)
+        self._conn_btn.setText("Connect"); self._conn_btn.setEnabled(self.cur_cfg is not None)
 
-    def on_connection_established(self, interface_name: str):
-        self.is_connected = True
-        self.progress_bar.setVisible(False)
-        self.connection_start_time = datetime.datetime.now()
-        self.vpn_interface_name = interface_name if interface_name else self.get_vpn_interface_name()
-        if not self.vpn_interface_name:
-            self.log_output.append("Warning: Could not determine VPN interface name. Data traffic may not be displayed.")
-
-        self.log_output.append("✓ VPN connection successfully established!")
-        if self.vpn_interface_name:
-            self.log_output.append(f"VPN interface detected: {self.vpn_interface_name}")
-
-
-    def on_connection_failed(self, error):
-        self.progress_bar.setVisible(False)
-        self.btn_connect.setEnabled(True)
-        self.btn_disconnect.setEnabled(False)
-        self.is_connected = False
-        self.connection_start_time = None # Reset time on failure
-        self.vpn_interface_name = None # Reset interface name on failure
-
-        self.log_output.append(f"✗ CONNECTION FAILED: {error}")
-        self.log_output.append("=" * 35)
-        suggestions = ""
-        if "permission" in error.lower():
-            suggestions = "\nSuggestions:\n• Run the program with sudo\n• Check if you have administrative privileges"
-        elif "not found" in error.lower():
-            suggestions = "\nSuggestions:\n• Install OpenVPN: sudo apt install openvpn\n• Check if it's in your PATH"
-        elif "credentials" in error.lower():
-            suggestions = "\nSuggestions:\n• Verify username and password\n• Confirm if the server accepts these credentials"
-        elif "certificate" in error.lower():
-            suggestions = "\nSuggestions:\n• Check if the certificate is valid\n• Confirm if it has not expired"
-        elif "network" in error.lower() or "dns" in error.lower():
-            suggestions = "\nSuggestions:\n• Check your internet connection\n• Test if you can reach the VPN server\n• Check DNS settings"
-        QMessageBox.critical(
-            self, "Connection Failed",
-            f"Error: {error}{suggestions}"
+    def _on_connected(self, iface):
+        self.connected = True; self.start_time = datetime.datetime.now()
+        self.vpn_iface = iface or self._detect_iface(); self.sess_final = False
+        self.last_sent = self.last_recv = None; self.ss_sent = self.ss_recv = None
+        self.sent_pts = []; self.recv_pts = []; self._chart.clear()
+        self._dot.set_state("on")
+        self._big_status.setText("Connected")
+        self._big_status.setStyleSheet(
+            f"color: {Colors.ORANGE}; font-size: 14px; font-weight: 700; background: transparent;"
         )
+        self._conn_btn.setStyleSheet(self._conn_btn_style_disconnect)
+        self._conn_btn.setText("Disconnect"); self._conn_btn.setEnabled(True)
+        self._log(f"✓ Connected!  iface={self.vpn_iface or 'unknown'}"); self._refresh_list()
 
-    def on_thread_finished_cleanup(self):
-        self.log_output.append("OpenVPN thread finished.")
-        if not self.is_connected:
-             self.btn_connect.setEnabled(True)
-             self.btn_disconnect.setEnabled(False)
-             self.progress_bar.setVisible(False)
-             self.status_label.setText("Disconnected")
-             self.status_label.setStyleSheet("QLabel { color: red; padding: 10px; }")
-             # Ensure data and time labels are reset if thread finished due to failure/disconnection
-             self.connected_time_label.setText("Connected Time: 00h 00m 00s")
-             self.data_sent_label.setText("Data Sent: 0 KB")
-             self.data_received_label.setText("Data Received: 0 KB")
-             self.connection_start_time = None
-             self.vpn_interface_name = None
-        # If a close was requested while thread was cleaning up, close now
-        if getattr(self, '_closing_after_disconnect', False) and not self.is_connected:
-            self._closing_after_disconnect = False
-            try:
-                self.close()
-            except Exception:
-                pass
+    def _on_failed(self, err):
+        self._finalize("Failed"); self.connected = False
+        self._apply_disconnected(); self._reset_live()
+        self.start_time = self.vpn_iface = None
+        self._log(f"✗ FAILED: {err}"); QMessageBox.critical(self, "Connection Failed", err)
 
-    def update_status(self):
-        # Check if OpenVPN is actually running
-        if self.is_connected:
-            # Check if openvpn process is still running
-            try:
-                result = subprocess.run(['pgrep', 'openvpn'], capture_output=True)
-                if result.returncode != 0:
-                    # No openvpn processes found, force disconnect state
-                    self.log_output.append("⚠ OpenVPN process not found. Connection lost.")
-                    self.is_connected = False
-                    self.btn_connect.setEnabled(True)
-                    self.btn_disconnect.setEnabled(False)
-                    self.progress_bar.setVisible(False)
-                    self.status_label.setText("Disconnected (Process Lost)")
-                    self.status_label.setStyleSheet("QLabel { color: red; padding: 10px; }")
-                    self.connected_time_label.setText("Connected Time: 00h 00m 00s")
-                    self.data_sent_label.setText("Data Sent: 0 KB")
-                    self.data_received_label.setText("Data Received: 0 KB")
-                    self.connection_start_time = None
-                    self.vpn_interface_name = None
-                    return
-            except:
-                pass  # If pgrep fails, continue with normal status update
-        
-        if self.is_connected:
-            # Update connected time
-            if self.connection_start_time:
-                elapsed_time = datetime.datetime.now() - self.connection_start_time
-                hours, remainder = divmod(int(elapsed_time.total_seconds()), 3600)
-                minutes, seconds = divmod(remainder, 60)
-                self.connected_time_label.setText(f"Connected Time: {hours:02d}h {minutes:02d}m {seconds:02d}s")
+    def _on_thread_done(self):
+        if not self.connected:
+            self._apply_disconnected(); self._reset_live()
+            self.start_time = self.vpn_iface = None
 
-            # Update data usage
-            if self.vpn_interface_name:
-                sent, received = self.get_interface_data_usage(self.vpn_interface_name)
-                if sent is not None and received is not None:
-                    self.data_sent_label.setText(f"Data Sent: {self.format_bytes(sent)}")
-                    self.data_received_label.setText(f"Data Received: {self.format_bytes(received)}")
-                else:
-                    # If data collection fails, it might mean the interface is down or not found
-                    self.data_sent_label.setText("Data Sent: N/A")
-                    self.data_received_label.setText("Data Received: N/A")
-            else:
-                self.data_sent_label.setText("Data Sent: N/A")
-                self.data_received_label.setText("Data Received: N/A")
+    def _add_profile(self):
+        d = AddProfileDialog(self)
+        if d.exec() == QDialog.DialogCode.Accepted:
+            data = d.data()
+            if not data['name'] or not data['config_path']:
+                QMessageBox.warning(self, "Error", "Name and file required."); return
+            if not os.path.exists(data['config_path']):
+                QMessageBox.critical(self, "Error", f"File not found:\n{data['config_path']}"); return
+            self.cfgman.add(VPNConfig(**data)); self._refresh_list(); self._refresh_combo()
+            self._log(f"Profile '{data['name']}' added.")
 
-            # Check if the thread finished unexpectedly while connected
-            if self.vpn_thread is None or not self.vpn_thread.isRunning():
-                self.log_output.append("⚠ VPN connection lost or terminated unexpectedly. Restoring state...")
-                self.is_connected = False
-                self.btn_connect.setEnabled(True)
-                self.btn_disconnect.setEnabled(False)
-                self.progress_bar.setVisible(False)
-                self.status_label.setText("Disconnected (Connection Lost)")
-                self.status_label.setStyleSheet("QLabel { color: red; padding: 10px; }")
-                self.connected_time_label.setText("Connected Time: 00h 00m 00s")
-                self.data_sent_label.setText("Data Sent: 0 KB")
-                self.data_received_label.setText("Data Received: 0 KB")
-                self.connection_start_time = None
-                self.vpn_interface_name = None
-                self.log_output.append("=" * 35)
-        else:
-            # Ensure labels are reset when not connected
-            self.connected_time_label.setText("Connected Time: 00h 00m 00s")
-            self.data_sent_label.setText("Data Sent: 0 KB")
-            self.data_received_label.setText("Data Received: 0 KB")
+    def _edit_profile(self):
+        item = self._profile_list.currentItem()
+        if not item: return
+        name = item.text().strip().lstrip("● ").split("  —  ")[0].strip()
+        cfg = self.cfgman.get(name)
+        if not cfg: return
+        d = AddProfileDialog(self, cfg)
+        if d.exec() == QDialog.DialogCode.Accepted:
+            data = d.data()
+            if not data['name'] or not data['config_path']:
+                QMessageBox.warning(self, "Error", "Name and file required."); return
+            if not os.path.exists(data['config_path']):
+                QMessageBox.critical(self, "Error", f"File not found:\n{data['config_path']}"); return
+            if data['name'] != name: self.cfgman.remove(name)
+            self.cfgman.add(VPNConfig(**data)); self._refresh_list(); self._refresh_combo()
 
-    def get_vpn_interface_name(self) -> Optional[str]:
-        """
-        Attempts to find the VPN interface name (e.g., tun0, tap0) by looking for common patterns
-        in `ip link show` or `ifconfig` output.
-        This is a fallback if the OpenVPN log parsing fails.
-        """
+    def _delete_profile(self):
+        item = self._profile_list.currentItem()
+        if not item: return
+        name = item.text().strip().lstrip("● ").split("  —  ")[0].strip()
+        r = QMessageBox.question(self, "Delete", f"Delete profile '{name}'?",
+                                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if r == QMessageBox.StandardButton.Yes:
+            self.cfgman.remove(name); self._refresh_list(); self._refresh_combo()
+            self._log(f"Profile '{name}' deleted.")
+
+    # ── Timer ─────────────────────────────────────────────────────────────────
+
+    def _tick(self):
+        if not self.connected: return
         try:
-            # Prefer 'ip link show' as it's more modern and often available
-            result = subprocess.run(['ip', 'link', 'show'], capture_output=True, text=True, check=True)
-            output = result.stdout
-            # Common patterns for VPN interfaces: tunX, tapX
-            match = re.search(r'(tun\d+|tap\d+):', output)
-            if match:
-                return match.group(1)
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            try:
-                # Fallback to 'ifconfig' if 'ip' is not available or fails
-                result = subprocess.run(['ifconfig'], capture_output=True, text=True, check=True)
-                output = result.stdout
-                match = re.search(r'(tun\d+|tap\d+):', output)
-                if match:
-                    return match.group(1)
-            except (subprocess.CalledProcessError, FileNotFoundError):
-                pass
+            r = subprocess.run(['pgrep', 'openvpn'], capture_output=True)
+            if r.returncode != 0:
+                self._log("⚠ Process lost."); self._finalize("Process lost")
+                self.connected = False; self._apply_disconnected(); self._reset_live()
+                self.start_time = self.vpn_iface = None; self._refresh_list(); return
+        except: pass
+
+        if self.start_time:
+            secs = int((datetime.datetime.now() - self.start_time).total_seconds())
+            self._dur_lbl.setText(fmt_dur(secs))
+
+        if self.vpn_iface:
+            sent, recv = self._iface_bytes(self.vpn_iface)
+            if sent is not None:
+                self._up_lbl.setText(fmt_bytes(sent)); self._dn_lbl.setText(fmt_bytes(recv))
+                if self.ss_sent is None: self.ss_sent = sent; self.ss_recv = recv
+                up_k = dn_k = 0.0
+                if self.last_sent is not None:
+                    up_k = max(0.0, (sent - self.last_sent) / 1024.0)
+                    dn_k = max(0.0, (recv - self.last_recv) / 1024.0)
+                self.last_sent = sent; self.last_recv = recv
+                self._up_rate.setText(f"↑ {up_k:.1f} KB/s"); self._dn_rate.setText(f"↓ {dn_k:.1f} KB/s")
+                self._chart.push(up_k, dn_k)
+                self.sent_pts.append(up_k); self.recv_pts.append(dn_k)
+                if len(self.sent_pts) > 120: self.sent_pts.pop(0)
+                if len(self.recv_pts) > 120: self.recv_pts.pop(0)
+
+    def _reset_live(self):
+        self._dur_lbl.setText("—"); self._up_lbl.setText("—"); self._dn_lbl.setText("—")
+        self._up_rate.setText("↑ 0.0 KB/s"); self._dn_rate.setText("↓ 0.0 KB/s")
+        self._chart.clear(); self.last_sent = self.last_recv = None
+        self.ss_sent = self.ss_recv = None; self.sent_pts = []; self.recv_pts = []
+
+    def _finalize(self, reason="Disconnected"):
+        if self.sess_final or not self.start_time: return
+        dur = int((datetime.datetime.now() - self.start_time).total_seconds())
+        self.total_secs += max(dur, 0)
+        pk_up = max(self.sent_pts) if self.sent_pts else 0.0
+        pk_dn = max(self.recv_pts) if self.recv_pts else 0.0
+        self.sessions.insert(0, {
+            "started": self.start_time.strftime("%Y-%m-%d %H:%M"), "duration": dur,
+            "upload":   max(0, (self.last_sent or 0) - (self.ss_sent or 0)),
+            "download": max(0, (self.last_recv or 0) - (self.ss_recv or 0)),
+            "pk_up": pk_up, "pk_dn": pk_dn, "reason": reason,
+        })
+        self.sessions = self.sessions[:20]; self.sess_final = True; self._refresh_stats()
+
+    def _refresh_stats(self):
+        n = len(self.sessions)
+        self._st_sess.setText(str(n))
+        h, r = divmod(self.total_secs, 3600); m, _ = divmod(r, 60)
+        self._st_time.setText(f"{h:02d}h {m:02d}m")
+        if n:
+            self._st_pk_up.setText(f"{max(e['pk_up'] for e in self.sessions):.1f} KB/s")
+            self._st_pk_dn.setText(f"{max(e['pk_dn'] for e in self.sessions):.1f} KB/s")
+            lines = []
+            for i, s in enumerate(self.sessions, 1):
+                h2, r2 = divmod(s['duration'], 3600); m2, s2 = divmod(r2, 60)
+                lines.append(
+                    f"[{i:02d}] {s['started']}  {h2:02d}:{m2:02d}:{s2:02d}"
+                    f"  ↑{fmt_bytes(s['upload'])}  ↓{fmt_bytes(s['download'])}"
+                    f"  peak ↑{s['pk_up']:.1f} ↓{s['pk_dn']:.1f}  {s['reason']}"
+                )
+            self._hist_box.setPlainText("\n".join(lines))
+        else:
+            self._st_pk_up.setText("—"); self._st_pk_dn.setText("—")
+            self._hist_box.setPlainText("No sessions yet.")
+
+    # ── Network helpers ───────────────────────────────────────────────────────
+
+    def _detect_iface(self):
+        try:
+            r = subprocess.run(['ip', 'link', 'show'], capture_output=True, text=True, check=True)
+            m = re.search(r'(tun\d+|tap\d+):', r.stdout)
+            if m: return m.group(1)
+        except: pass
         return None
 
-    def get_interface_data_usage(self, interface_name: str) -> tuple[Optional[int], Optional[int]]:
-        """
-        Retrieves data sent and received for a given network interface.
-        Parses output from 'ip -s link show <interface_name>' or 'ifconfig <interface_name>'.
-        Returns (bytes_sent, bytes_received) or (None, None) if not found/error.
-        """
-        sent_bytes = None
-        received_bytes = None
-
+    def _iface_bytes(self, iface):
         try:
-            # Try parsing 'ip -s link show'
-            result = subprocess.run(['ip', '-s', 'link', 'show', interface_name],
-                                    capture_output=True, text=True, check=True)
-            output = result.stdout
-
-            # Example output snippet for 'ip -s link show':
-            # RX:  bytes packets errors dropped  missed   mcast
-            # 12345678 12345    0       0        0        0
-            # TX:  bytes packets errors dropped carrier collsns
-            # 87654321 8765     0       0        0        0
-
-            rx_match = re.search(r'RX:\s+bytes\s+packets.*\n\s*(\d+)', output)
-            tx_match = re.search(r'TX:\s+bytes\s+packets.*\n\s*(\d+)', output)
-
-            if rx_match:
-                received_bytes = int(rx_match.group(1))
-            if tx_match:
-                sent_bytes = int(tx_match.group(1))
-
-            if sent_bytes is not None and received_bytes is not None:
-                return sent_bytes, received_bytes
-
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            pass # Continue to try ifconfig
-
+            r = subprocess.run(['ip', '-s', 'link', 'show', iface],
+                                capture_output=True, text=True, check=True)
+            rx = re.search(r'RX:\s+bytes\s+packets.*\n\s*(\d+)', r.stdout)
+            tx = re.search(r'TX:\s+bytes\s+packets.*\n\s*(\d+)', r.stdout)
+            if rx and tx: return int(tx.group(1)), int(rx.group(1))
+        except: pass
         try:
-            # Fallback to 'ifconfig' for older systems or if 'ip' fails
-            result = subprocess.run(['ifconfig', interface_name],
-                                    capture_output=True, text=True, check=True)
-            output = result.stdout
-
-            # Example output snippet for 'ifconfig':
-            # RX bytes:12345678 (11.7 MB)  TX bytes:87654321 (83.5 MB)
-            # OR (older/different format):
-            # RX packets 123456  bytes 12345678 (11.7 MiB)
-            # TX packets 876543  bytes 87654321 (83.5 MiB)
-
-            rx_match = re.search(r'RX bytes:(\d+)|RX packets \d+\s+bytes (\d+)', output)
-            tx_match = re.search(r'TX bytes:(\d+)|TX packets \d+\s+bytes (\d+)', output)
-
-            if rx_match:
-                received_bytes = int(rx_match.group(1) or rx_match.group(2))
-            if tx_match:
-                sent_bytes = int(tx_match.group(1) or tx_match.group(2))
-
-            if sent_bytes is not None and received_bytes is not None:
-                return sent_bytes, received_bytes
-
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            pass
-
+            r = subprocess.run(['ifconfig', iface], capture_output=True, text=True, check=True)
+            rx = re.search(r'RX bytes:(\d+)|RX packets \d+\s+bytes (\d+)', r.stdout)
+            tx = re.search(r'TX bytes:(\d+)|TX packets \d+\s+bytes (\d+)', r.stdout)
+            if rx and tx:
+                return int(tx.group(1) or tx.group(2)), int(rx.group(1) or rx.group(2))
+        except: pass
         return None, None
 
-    def format_bytes(self, bytes_val: int) -> str:
-        """Formats byte count into human-readable string (KB, MB, GB)."""
-        if bytes_val is None:
-            return "N/A"
-        if bytes_val < 1024:
-            return f"{bytes_val} B"
-        elif bytes_val < 1024 * 1024:
-            return f"{bytes_val / 1024:.2f} KB"
-        elif bytes_val < 1024 * 1024 * 1024:
-            return f"{bytes_val / (1024 * 1024):.2f} MB"
-        else:
-            return f"{bytes_val / (1024 * 1024 * 1024):.2f} GB"
+    def _log(self, msg):
+        ts = datetime.datetime.now().strftime("%H:%M:%S")
+        self._log_box.append(f"[{ts}] {msg}")
+        self._log_box.verticalScrollBar().setValue(self._log_box.verticalScrollBar().maximum())
 
-    def closeEvent(self, event):
-        # Debug: log close event
-        print("DEBUG: closeEvent called")
-        
-        # Always confirm exit with the user.
-        if self.is_connected:
-            msg = (
-                "There is an active VPN connection.\n"
-                "Closing the application will disconnect the VPN.\n\n"
-                "Do you really want to exit?"
-            )
-        else:
-            msg = "Do you really want to close the application?"
-
-        reply = QMessageBox.question(
-            self, "Exit Confirmation",
-            msg,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-
-        if reply != QMessageBox.StandardButton.Yes:
-            event.ignore()
-            return
-
-        # If the user confirmed and we're connected, attempt a best-effort
-        # disconnection in the background and allow the application to exit
-        # immediately. We start a detached pkill (or use pkexec/sudo when
-        # available) so the OS will stop OpenVPN even after the GUI exits.
-        if self.is_connected:
+    def closeEvent(self, e):
+        if self.connected:
+            r = QMessageBox.question(self, "Exit", "Disconnect and exit?",
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if r != QMessageBox.StandardButton.Yes:
+                e.ignore(); return
             try:
-                # Prefer direct pkill when running as root
-                if os.getuid() == 0:
-                    cmd = ['pkill', '-TERM', 'openvpn']
-                    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-                else:
-                    # Try pkexec first, then sudo, finally fallback to direct pkill
-                    if shutil.which('pkexec'):
-                        cmd = ['pkexec', 'pkill', '-TERM', 'openvpn']
-                        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-                    elif shutil.which('sudo'):
-                        cmd = ['sudo', 'pkill', '-TERM', 'openvpn']
-                        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-                    else:
-                        # Last-ditch: try direct pkill (may fail without privileges)
-                        cmd = ['pkill', '-TERM', 'openvpn']
-                        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-            except Exception:
-                # Best-effort only; ignore any errors and proceed to exit
-                pass
+                args = ['pkill', '-TERM', 'openvpn']
+                kw = dict(stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                if os.getuid() == 0:              subprocess.Popen(args, **kw)
+                elif shutil.which('pkexec'):      subprocess.Popen(['pkexec'] + args, **kw)
+                elif shutil.which('sudo'):        subprocess.Popen(['sudo']   + args, **kw)
+            except: pass
+        self._theme.stop()
+        e.accept()
 
-            # Don't wait for cleanup inside the GUI process; exit immediately
-            event.accept()
-            return
 
-        event.accept()
+# ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
     app = QApplication(sys.argv)
@@ -1107,35 +1257,19 @@ def main():
     app.setApplicationVersion(APP_VERSION)
 
     try:
-        subprocess.run(['openvpn', '--version'],
-                      capture_output=True, check=True)
+        subprocess.run(['openvpn', '--version'], capture_output=True, check=True)
     except (subprocess.CalledProcessError, FileNotFoundError):
-        QMessageBox.critical(
-            None, "OpenVPN Not Found",
-            "OpenVPN is not installed or not in your system's PATH.\n"
-            "Please install OpenVPN before using this application.\n"
-            "Ubuntu/Debian: sudo apt install openvpn\n"
-            "CentOS/RHEL: sudo yum install openvpn\n"
-            "Arch: sudo pacman -S openvpn"
-        )
+        QMessageBox.critical(None, "OpenVPN Not Found",
+                             "Install OpenVPN:\n  sudo apt install openvpn")
         sys.exit(1)
-    
-    # Check if running with elevated privileges
-    if os.getuid() == 0:
-        print("INFO: Running with elevated privileges - no additional authentication required.")
-    else:
-        print("WARNING: Not running with elevated privileges - authentication may be required for each operation.")
-        QMessageBox.warning(
-            None, "Privileges Notice",
-            "This application is not running with elevated privileges.\n"
-            "You may be prompted for authentication when connecting/disconnecting VPN.\n\n"
-            "For better experience, launch using:\n"
-            "openvpn-manager-launcher"
-        )
-    
-    window = OpenVPNGUI()
-    window.show()
+
+    if os.getuid() != 0:
+        QMessageBox.warning(None, "Privileges",
+                            "Not running as root.\nAuthentication may be required.")
+
+    w = OpenVPNConnectGUI(); w.show()
     sys.exit(app.exec())
+
 
 if __name__ == "__main__":
     main()

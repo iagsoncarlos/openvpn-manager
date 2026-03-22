@@ -51,9 +51,8 @@ check_dependencies() {
         missing_deps+=("PyQt6 (python3-pyqt6 or pip3 install PyQt6)")
     fi
     
-    # Check main module
-    export PYTHONPATH="/usr/lib/python3.10/dist-packages:$PYTHONPATH"
-    if ! python3 -c "import main" 2>/dev/null; then
+    # Check main module - check in all possible dist-packages locations
+    if ! python3 -c "import sys; sys.path.insert(0, '/usr/lib/python3/dist-packages'); import main" 2>/dev/null; then
         missing_deps+=("main module (OpenVPN Manager not installed correctly)")
     fi
     
@@ -120,11 +119,11 @@ authenticate_and_run() {
     
     # Try pkexec first (preferred for GUI applications)
     if command -v pkexec >/dev/null 2>&1; then
-        export PYTHONPATH="/usr/lib/python3.10/dist-packages:$PYTHONPATH"
+        export PYTHONPATH="/usr/lib/python3/dist-packages:$PYTHONPATH"
         exec pkexec env DISPLAY="$DISPLAY" XAUTHORITY="$XAUTHORITY" PYTHONPATH="$PYTHONPATH" $env_vars python3 -c "import main; main.main()" "$@"
     # Fallback to sudo
     elif command -v sudo >/dev/null 2>&1; then
-        export PYTHONPATH="/usr/lib/python3.10/dist-packages:$PYTHONPATH"
+        export PYTHONPATH="/usr/lib/python3/dist-packages:$PYTHONPATH"
         exec sudo -E env $env_vars python3 -c "import main; main.main()" "$@"
     else
         show_error "No privilege escalation method available (pkexec or sudo).\nPlease install policykit-1 or sudo."
