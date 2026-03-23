@@ -22,6 +22,21 @@ if [ "$VERSION" != "$DEBIAN_VERSION" ]; then
     exit 1
 fi
 
+# Validate changelog structure before running dpkg-buildpackage for clearer, earlier failures.
+if ! dpkg-parsechangelog >/dev/null 2>&1; then
+    echo "❌ ERROR: debian/changelog is not valid Debian changelog format."
+    echo "Run: dpkg-parsechangelog"
+    exit 1
+fi
+
+# CI has shown parser issues with non-ASCII maintainer trailer bytes; enforce ASCII there.
+if ! LC_ALL=C awk '/^ -- / && $0 ~ /[^ -~]/ {print "Line " NR ": " $0; bad=1} END {exit bad}' debian/changelog; then
+    echo "❌ ERROR: Non-ASCII characters detected in debian/changelog maintainer trailer line(s)."
+    echo "Use ASCII-only maintainer trailer lines in format:"
+    echo "  -- Name <email>  RFC2822-date"
+    exit 1
+fi
+
 # --- Setup and Cleanup ---
 echo "⚙️  Preparing build environment..."
 # Clean up previous build artifacts in 'dist'
