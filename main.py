@@ -3,6 +3,7 @@ import os
 import subprocess
 import json
 import shutil
+import pwd
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -14,7 +15,7 @@ try:
         QComboBox, QFormLayout, QDialog, QDialogButtonBox, QFrame,
         QScrollArea, QStackedWidget, QSizePolicy, QSpacerItem, QStyledItemDelegate, QStyle
     )
-    from PyQt6.QtCore import QTimer, QThread, pyqtSignal, Qt, QSize, QPoint, QRect, QEvent
+    from PyQt6.QtCore import QTimer, QThread, pyqtSignal, Qt, QSize, QPoint, QRect, QEvent, QUrl
     from PyQt6.QtGui import (
         QFont, QIcon, QPainter, QColor, QPen, QPixmap, QPainterPath,
         QLinearGradient, QBrush, QPalette, QConicalGradient, QRadialGradient
@@ -176,6 +177,11 @@ QComboBox QAbstractItemView {{
     selection-color: {c.ORANGE};
 }}
 
+QComboBox#ProfileCombo {{
+    min-height: 36px;
+    max-height: 36px;
+}}
+
 QListWidget {{
     background: {c.BG_CARD};
     color: {c.TXT_PRI};
@@ -214,8 +220,9 @@ QPushButton#ConnectBtn {{
     border-radius: 5px;
     font-size: 12px;
     font-weight: 600;
-    min-height: 34px;
-    padding: 5px 20px;
+    min-height: 36px;
+    max-height: 36px;
+    padding: 0 20px;
 }}
 QPushButton#ConnectBtn:hover   {{ background: {c.ORANGE_L}; }}
 QPushButton#ConnectBtn:pressed {{ background: {c.ORANGE_D}; }}
@@ -274,8 +281,13 @@ QPushButton#AddBtn:hover {{ background: rgba({ar},{ag},{ab},71); }}
 
 def build_dialog_css() -> str:
     c = Colors
+    ar, ag, ab = c.accent_rgb()
     return f"""
-QDialog {{ background: {c.BG_BASE}; }}
+QDialog {{
+    background: {c.BG_BASE};
+    border: 1px solid {c.BORDER};
+    border-radius: 8px;
+}}
 QLabel {{ color: {c.TXT_SEC}; font-size: 12px; }}
 QLabel#title {{ color: {c.TXT_PRI}; font-size: 13px; font-weight: 600; }}
 QLineEdit {{
@@ -305,7 +317,142 @@ QPushButton#ok {{
 }}
 QPushButton#ok:hover   {{ background: {c.ORANGE_L}; }}
 QPushButton#ok:pressed {{ background: {c.ORANGE_D}; }}
+
+QMessageBox {{
+    background: {c.BG_BASE};
+}}
+QMessageBox QLabel {{
+    color: {c.TXT_PRI};
+    font-size: 12px;
+}}
+QMessageBox QPushButton {{
+    min-width: 88px;
+    min-height: 30px;
+    padding: 6px 12px;
+}}
+QMessageBox QPushButton#ok,
+QMessageBox QPushButton#yes {{
+    background: {c.ORANGE};
+    color: #fff;
+    border: none;
+    font-weight: 600;
+}}
+QMessageBox QPushButton#ok:hover,
+QMessageBox QPushButton#yes:hover {{
+    background: {c.ORANGE_L};
+}}
+QMessageBox QPushButton#ok:pressed,
+QMessageBox QPushButton#yes:pressed {{
+    background: {c.ORANGE_D};
+}}
+QMessageBox QPushButton#danger {{
+    background: rgba(231, 76, 60, 36);
+    color: {c.RED_ERR};
+    border: 1px solid {c.RED_ERR};
+    font-weight: 600;
+}}
+QMessageBox QPushButton#danger:hover {{
+    background: rgba(231, 76, 60, 56);
+}}
+
+QFileDialog {{
+    background: {c.BG_BASE};
+    color: {c.TXT_PRI};
+}}
+QFileDialog QTreeView,
+QFileDialog QListView {{
+    background: {c.BG_CARD};
+    color: {c.TXT_PRI};
+    border: 1px solid {c.BORDER};
+    border-radius: 6px;
+    selection-background-color: rgba({ar},{ag},{ab},64);
+    selection-color: {c.ORANGE};
+}}
+QFileDialog QLineEdit,
+QFileDialog QComboBox {{
+    min-height: 34px;
+    max-height: 34px;
+    padding: 0 10px;
+    border-radius: 5px;
+}}
+QFileDialog QComboBox::drop-down {{
+    border: none;
+    width: 22px;
+}}
 """
+
+
+def build_app_css() -> str:
+    """Global stylesheet so all app windows and dialogs share one visual language."""
+    return f"{build_main_css()}\n{build_dialog_css()}"
+
+
+def show_themed_message(
+    parent,
+    title: str,
+    text: str,
+    icon=QMessageBox.Icon.Information,
+    buttons=QMessageBox.StandardButton.Ok,
+    default_button=QMessageBox.StandardButton.Ok,
+    informative_text: str = "",
+    yes_object_name: str = "yes",
+) -> QMessageBox.StandardButton:
+    """Show a QMessageBox with app-consistent styling and button roles."""
+    box = QMessageBox(parent)
+    box.setWindowTitle(title)
+    box.setText(text)
+    box.setIcon(icon)
+    box.setStandardButtons(buttons)
+    box.setDefaultButton(default_button)
+    if informative_text:
+        box.setInformativeText(informative_text)
+    box.setStyleSheet(build_dialog_css())
+
+    ok_btn = box.button(QMessageBox.StandardButton.Ok)
+    if ok_btn:
+        ok_btn.setObjectName("ok")
+
+    yes_btn = box.button(QMessageBox.StandardButton.Yes)
+    if yes_btn:
+        yes_btn.setObjectName(yes_object_name)
+
+    no_btn = box.button(QMessageBox.StandardButton.No)
+    if no_btn:
+        no_btn.setObjectName("secondary")
+
+    cancel_btn = box.button(QMessageBox.StandardButton.Cancel)
+    if cancel_btn:
+        cancel_btn.setObjectName("secondary")
+
+    return QMessageBox.StandardButton(box.exec())
+
+
+def themed_warning(parent, title: str, text: str) -> None:
+    show_themed_message(parent, title, text, icon=QMessageBox.Icon.Warning)
+
+
+def themed_error(parent, title: str, text: str, informative_text: str = "") -> None:
+    show_themed_message(
+        parent,
+        title,
+        text,
+        icon=QMessageBox.Icon.Critical,
+        informative_text=informative_text,
+    )
+
+
+def themed_confirm(parent, title: str, text: str, destructive: bool = False) -> bool:
+    yes_name = "danger" if destructive else "yes"
+    result = show_themed_message(
+        parent,
+        title,
+        text,
+        icon=QMessageBox.Icon.Question,
+        buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        default_button=QMessageBox.StandardButton.No,
+        yes_object_name=yes_name,
+    )
+    return result == QMessageBox.StandardButton.Yes
 
 
 # ── Misc helpers ──────────────────────────────────────────────────────────────
@@ -315,6 +462,28 @@ def run_privileged(cmd, **kwargs):
         return subprocess.run(cmd, **kwargs)
     tool = 'pkexec' if shutil.which('pkexec') else 'sudo'
     return subprocess.run([tool] + cmd, **kwargs)
+
+
+def get_desktop_user_home() -> Path:
+    """Return the graphical user's home, even when app is running as root."""
+    if os.getuid() != 0:
+        return Path.home()
+
+    sudo_user = os.environ.get("SUDO_USER")
+    if sudo_user:
+        try:
+            return Path(pwd.getpwnam(sudo_user).pw_dir)
+        except Exception:
+            pass
+
+    pkexec_uid = os.environ.get("PKEXEC_UID")
+    if pkexec_uid:
+        try:
+            return Path(pwd.getpwuid(int(pkexec_uid)).pw_dir)
+        except Exception:
+            pass
+
+    return Path.home()
 
 
 def fmt_bytes(b):
@@ -697,18 +866,61 @@ class AddProfileDialog(QDialog):
         brow.addWidget(cancel); brow.addWidget(ok); lay.addLayout(brow)
 
         if self.cfg:
-            self.name_e.setText(self.cfg.name); self.path_e.setText(self.cfg.config_path)
+            self.name_e.setText(self.cfg.name); self.path_e.setText(self._display_path(self.cfg.config_path))
             self.user_e.setText(self.cfg.username); self.pass_e.setText(self.cfg.password)
 
+    def _display_path(self, path_str: str) -> str:
+        """Display expanded absolute path for clarity in the profile form."""
+        return str(Path(path_str).expanduser())
+
+    def _expanded_path(self, path_str: str) -> str:
+        """Convert displayed path (possibly using '~') into a filesystem path."""
+        raw = path_str.strip()
+        home = get_desktop_user_home()
+
+        if raw == "~":
+            return str(home)
+        if raw.startswith("~/"):
+            return str(home / raw[2:])
+        return str(Path(raw).expanduser())
+
     def _browse(self):
-        fp, _ = QFileDialog.getOpenFileName(self, "Select .ovpn", "", "OpenVPN (*.ovpn);;All (*)")
-        if fp:
-            self.path_e.setText(fp)
-            if not self.name_e.text(): self.name_e.setText(Path(fp).stem)
+        dlg = QFileDialog(self, "Select .ovpn")
+        dlg.setFileMode(QFileDialog.FileMode.ExistingFile)
+        dlg.setNameFilter("OpenVPN (*.ovpn);;All (*)")
+        dlg.setOption(QFileDialog.Option.DontUseNativeDialog, True)
+        dlg.setStyleSheet(build_dialog_css())
+
+        # Start in home for easier navigation; if field already has a path, reuse it.
+        start_dir = get_desktop_user_home()
+        current_path = self._expanded_path(self.path_e.text())
+        if current_path:
+            p = Path(current_path)
+            if p.is_file():
+                start_dir = p.parent
+            elif p.is_dir():
+                start_dir = p
+        dlg.setDirectory(str(start_dir))
+
+        # Add quick places for Linux home navigation in the left sidebar.
+        sidebar_urls = []
+        for place in (Path("/home"), get_desktop_user_home()):
+            if place.exists() and place.is_dir():
+                sidebar_urls.append(QUrl.fromLocalFile(str(place)))
+        if sidebar_urls:
+            dlg.setSidebarUrls(sidebar_urls)
+
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            files = dlg.selectedFiles()
+            if files:
+                fp = files[0]
+                self.path_e.setText(self._display_path(fp))
+                if not self.name_e.text():
+                    self.name_e.setText(Path(fp).stem)
 
     def data(self):
         return {
-            'name': self.name_e.text().strip(), 'config_path': self.path_e.text().strip(),
+            'name': self.name_e.text().strip(), 'config_path': self._expanded_path(self.path_e.text()),
             'username': self.user_e.text().strip(), 'password': self.pass_e.text().strip(),
         }
 
@@ -734,7 +946,9 @@ class OpenVPNConnectGUI(QMainWindow):
         self._theme.theme_changed.connect(self._apply_theme)
         self._theme.start()
 
-        self.setStyleSheet(build_main_css())
+        app = QApplication.instance()
+        if app:
+            app.setStyleSheet(build_app_css())
         self._build()
         self._timer = QTimer(self); self._timer.timeout.connect(self._tick); self._timer.start(1000)
 
@@ -762,7 +976,9 @@ class OpenVPNConnectGUI(QMainWindow):
 
     def _apply_theme(self, accent_hex: str, is_dark: bool):
         """Rebuild all styles when Ubuntu/GNOME theme changes."""
-        self.setStyleSheet(build_main_css())
+        app = QApplication.instance()
+        if app:
+            app.setStyleSheet(build_app_css())
         c = Colors
         self._conn_btn_style_connect    = self._make_connect_style()
         self._conn_btn_style_disconnect = self._make_disconnect_style()
@@ -860,21 +1076,22 @@ class OpenVPNConnectGUI(QMainWindow):
         cl.addWidget(h_rule())
 
         prow = QHBoxLayout(); prow.setSpacing(8)
+        row_h = 36
         pl = QLabel("Profile"); pl.setStyleSheet(f"color: {c.TXT_MUT}; font-size: 11px; min-width: 46px;")
         self._combo = QComboBox()
+        self._combo.setObjectName("ProfileCombo")
+        self._combo.setFixedHeight(row_h)
         self._combo.currentTextChanged.connect(self._on_combo)
         self._combo.setItemDelegate(AccentHoverDelegate(self._combo))
-        prow.addWidget(pl); prow.addWidget(self._combo, 1); cl.addLayout(prow)
-
-        conn_row = QHBoxLayout(); conn_row.setContentsMargins(0, 2, 0, 2)
+        prow.addWidget(pl); prow.addWidget(self._combo, 1)
         self._conn_btn = QPushButton("Connect"); self._conn_btn.setObjectName("ConnectBtn")
-        self._conn_btn.setEnabled(False); self._conn_btn.setFixedSize(160, 34)
+        self._conn_btn.setEnabled(False); self._conn_btn.setFixedSize(160, row_h)
         self._conn_btn.clicked.connect(self._toggle)
         self._conn_btn_style_connect    = self._make_connect_style()
         self._conn_btn_style_disconnect = self._make_disconnect_style()
         self._conn_btn.setStyleSheet(self._conn_btn_style_connect)
-        conn_row.addStretch(); conn_row.addWidget(self._conn_btn); conn_row.addStretch()
-        cl.addLayout(conn_row); lay.addWidget(card)
+        prow.addWidget(self._conn_btn)
+        cl.addLayout(prow); lay.addWidget(card)
 
         stats_row = QHBoxLayout(); stats_row.setSpacing(8)
         self._dur_lbl = self._stat_box(stats_row, "Duration",   c.TXT_PRI)
@@ -1024,7 +1241,7 @@ class OpenVPNConnectGUI(QMainWindow):
     def _connect(self):
         if not self.cur_cfg: return
         if not os.path.exists(self.cur_cfg.config_path):
-            QMessageBox.critical(self, "Error", f"File not found:\n{self.cur_cfg.config_path}"); return
+            themed_error(self, "Error", "File not found:", self.cur_cfg.config_path); return
         self.vpn_thread = OpenVPNThread(
             self.cur_cfg.config_path, self.cur_cfg.username or None, self.cur_cfg.password or None,
         )
@@ -1082,7 +1299,7 @@ class OpenVPNConnectGUI(QMainWindow):
         self._finalize("Failed"); self.connected = False
         self._apply_disconnected(); self._reset_live()
         self.start_time = self.vpn_iface = None
-        self._log(f"✗ FAILED: {err}"); QMessageBox.critical(self, "Connection Failed", err)
+        self._log(f"✗ FAILED: {err}"); themed_error(self, "Connection Failed", err)
 
     def _on_thread_done(self):
         if not self.connected:
@@ -1094,9 +1311,9 @@ class OpenVPNConnectGUI(QMainWindow):
         if d.exec() == QDialog.DialogCode.Accepted:
             data = d.data()
             if not data['name'] or not data['config_path']:
-                QMessageBox.warning(self, "Error", "Name and file required."); return
+                themed_warning(self, "Error", "Name and file required."); return
             if not os.path.exists(data['config_path']):
-                QMessageBox.critical(self, "Error", f"File not found:\n{data['config_path']}"); return
+                themed_error(self, "Error", "File not found:", data['config_path']); return
             self.cfgman.add(VPNConfig(**data)); self._refresh_list(); self._refresh_combo()
             self._log(f"Profile '{data['name']}' added.")
 
@@ -1110,9 +1327,9 @@ class OpenVPNConnectGUI(QMainWindow):
         if d.exec() == QDialog.DialogCode.Accepted:
             data = d.data()
             if not data['name'] or not data['config_path']:
-                QMessageBox.warning(self, "Error", "Name and file required."); return
+                themed_warning(self, "Error", "Name and file required."); return
             if not os.path.exists(data['config_path']):
-                QMessageBox.critical(self, "Error", f"File not found:\n{data['config_path']}"); return
+                themed_error(self, "Error", "File not found:", data['config_path']); return
             if data['name'] != name: self.cfgman.remove(name)
             self.cfgman.add(VPNConfig(**data)); self._refresh_list(); self._refresh_combo()
 
@@ -1120,9 +1337,8 @@ class OpenVPNConnectGUI(QMainWindow):
         item = self._profile_list.currentItem()
         if not item: return
         name = item.text().strip().lstrip("● ").split("  —  ")[0].strip()
-        r = QMessageBox.question(self, "Delete", f"Delete profile '{name}'?",
-                                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if r == QMessageBox.StandardButton.Yes:
+        confirmed = themed_confirm(self, "Delete Profile", f"Delete profile '{name}'?", destructive=True)
+        if confirmed:
             self.cfgman.remove(name); self._refresh_list(); self._refresh_combo()
             self._log(f"Profile '{name}' deleted.")
 
@@ -1233,9 +1449,8 @@ class OpenVPNConnectGUI(QMainWindow):
 
     def closeEvent(self, e):
         if self.connected:
-            r = QMessageBox.question(self, "Exit", "Disconnect and exit?",
-                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-            if r != QMessageBox.StandardButton.Yes:
+            confirmed = themed_confirm(self, "Exit", "Disconnect and exit?", destructive=True)
+            if not confirmed:
                 e.ignore(); return
             try:
                 args = ['pkill', '-TERM', 'openvpn']
@@ -1255,17 +1470,16 @@ def main():
     app.setOrganizationName(ORGANIZATION_NAME)
     app.setApplicationName(APP_NAME)
     app.setApplicationVersion(APP_VERSION)
+    app.setStyleSheet(build_app_css())
 
     try:
         subprocess.run(['openvpn', '--version'], capture_output=True, check=True)
     except (subprocess.CalledProcessError, FileNotFoundError):
-        QMessageBox.critical(None, "OpenVPN Not Found",
-                             "Install OpenVPN:\n  sudo apt install openvpn")
+        themed_error(None, "OpenVPN Not Found", "OpenVPN is not installed.", "Install with: sudo apt install openvpn")
         sys.exit(1)
 
     if os.getuid() != 0:
-        QMessageBox.warning(None, "Privileges",
-                            "Not running as root.\nAuthentication may be required.")
+        themed_warning(None, "Privileges", "Not running as root. Authentication may be required.")
 
     w = OpenVPNConnectGUI(); w.show()
     sys.exit(app.exec())
