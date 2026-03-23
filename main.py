@@ -13,7 +13,8 @@ try:
         QPushButton, QLabel, QListWidget, QTextEdit, QFileDialog,
         QMessageBox, QGroupBox, QLineEdit, QTabWidget, QListWidgetItem,
         QComboBox, QFormLayout, QDialog, QDialogButtonBox, QFrame,
-        QScrollArea, QStackedWidget, QSizePolicy, QSpacerItem, QStyledItemDelegate, QStyle
+            QScrollArea, QStackedWidget, QSizePolicy, QSpacerItem, QStyledItemDelegate, QStyle,
+            QToolButton
     )
     from PyQt6.QtCore import QTimer, QThread, pyqtSignal, Qt, QSize, QPoint, QRect, QEvent, QUrl
     from PyQt6.QtGui import (
@@ -76,6 +77,35 @@ class AccentHoverDelegate(QStyledItemDelegate):
         return super().editorEvent(event, model, option, index)
 
 
+# Hover-aware QPushButton that sets a dynamic property on enter/leave so
+# stylesheets can target QPushButton[hover="true"]. Use for profile action buttons.
+class HoverAwareButton(QPushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+        self.setMouseTracking(True)
+
+    def enterEvent(self, ev):
+        try:
+            self.setProperty("hover", "true")
+            self.style().unpolish(self)
+            self.style().polish(self)
+            self.update()
+        except Exception:
+            pass
+        return super().enterEvent(ev)
+
+    def leaveEvent(self, ev):
+        try:
+            self.setProperty("hover", "false")
+            self.style().unpolish(self)
+            self.style().polish(self)
+            self.update()
+        except Exception:
+            pass
+        return super().leaveEvent(ev)
+
+
 # ── Config fallback ──────────────────────────────────────────────────────────
 try:
     from config import (
@@ -99,10 +129,40 @@ from theme import ThemeManager, Colors
 def build_main_css() -> str:
     c = Colors
     ar, ag, ab = c.accent_rgb()
+    bur, bug, bub = Colors._hex_to_rgb(c.BLUE_UP)
+    grr, grg, grb = Colors._hex_to_rgb(c.GRN_OK)
+    gr_l = Colors._lighten(c.GRN_OK, 0.15)
+    gr_d = Colors._darken(c.GRN_OK, 0.18)
     return f"""
 QMainWindow {{ background: {c.BG_BASE}; }}
 QWidget {{ font-family: 'Ubuntu', 'Noto Sans', 'Segoe UI', sans-serif; }}
 QPushButton:focus {{ outline: none; }}
+QPushButton {{
+    background: transparent;
+    color: {c.TXT_SEC};
+    border: 1px solid {c.BORDER};
+    border-radius: 5px;
+}}
+QPushButton:hover {{
+    background: {c.BG_ELEV};
+    color: {c.TXT_PRI};
+    border-color: {c.BORDER_LT};
+}}
+QPushButton:pressed {{
+    background: {c.BG_SURF};
+}}
+QPushButton:disabled {{
+    background: transparent;
+    color: {c.TXT_MUT};
+    border: 1px solid {c.BORDER};
+}}
+
+/* Dynamic-property based hover fallbacks (some platforms don't respect :hover) */
+QPushButton[hover="true"] {{
+    background: {c.BG_ELEV};
+    color: {c.TXT_PRI};
+    border-color: {c.BORDER_LT};
+}}
 
 #Sidebar {{
     background: {c.BG_SIDEBAR};
@@ -112,25 +172,28 @@ QPushButton:focus {{ outline: none; }}
 QPushButton#NavBtn {{
     background: transparent;
     color: {c.TXT_MUT};
-    border: none;
-    border-radius: 0;
+    border: 1px solid {c.BORDER};
+    border-radius: 6px;
     text-align: left;
-    padding: 0 16px;
+    padding: 0 12px;
+    margin: 2px 8px;
     font-size: 12px;
     min-height: 44px;
 }}
 QPushButton#NavBtn:checked {{
     background: rgba({ar},{ag},{ab},38);
     color: {c.ORANGE};
-    border-left: 3px solid {c.ORANGE};
+    border: 1px solid {c.ORANGE};
 }}
 QPushButton#NavBtn:hover:!checked {{
     background: rgba(255,255,255,13);
     color: {c.TXT_SEC};
+    border-color: {c.BORDER_LT};
 }}
 QPushButton#NavBtn:pressed {{
     background: rgba({ar},{ag},{ab},30);
     color: {c.ORANGE};
+    border-color: {c.ORANGE};
 }}
 
 #Content {{ background: {c.BG_BASE}; }}
@@ -195,7 +258,7 @@ QListWidget {{
     outline: none;
     font-size: 12px;
 }}
-QListWidget::item {{ padding: 7px 12px; border-radius: 4px; }}
+QListWidget::item {{ padding: 6px 10px; border-radius: 4px; min-height: 34px; border-bottom: 1px solid {c.BORDER_LT}; }}
 QListWidget::item:hover {{ background: {c.BG_ELEV}; }}
 QListWidget::item:selected {{
     background: rgba({ar},{ag},{ab},64);
@@ -219,9 +282,9 @@ QScrollBar::handle:vertical {{
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 
 QPushButton#ConnectBtn {{
-    background: {c.ORANGE};
-    color: #fff;
-    border: none;
+    background: transparent;
+    color: {c.GRN_OK};
+    border: 1px solid {c.GRN_OK};
     border-radius: 5px;
     font-size: 12px;
     font-weight: 600;
@@ -229,29 +292,29 @@ QPushButton#ConnectBtn {{
     max-height: 36px;
     padding: 0 20px;
 }}
-QPushButton#ConnectBtn:hover   {{ background: {c.ORANGE_L}; }}
-QPushButton#ConnectBtn:pressed {{ background: {c.ORANGE_D}; }}
+QPushButton#ConnectBtn:hover   {{ background: rgba({grr},{grg},{grb},38); border-color: {gr_l}; }}
+QPushButton#ConnectBtn:pressed {{ background: rgba({grr},{grg},{grb},56); border-color: {gr_d}; }}
 QPushButton#ConnectBtn:disabled {{
-    background: {c.BG_ELEV};
+    background: transparent;
     color: {c.TXT_MUT};
     border: 1px solid {c.BORDER};
 }}
 
 QPushButton#DisconnectBtn {{
-    background: {c.RED_DARK};
-    color: #fff;
-    border: none;
+    background: transparent;
+    color: {c.RED_ERR};
+    border: 1px solid {c.RED_ERR};
     border-radius: 5px;
     font-size: 12px;
     font-weight: 600;
     min-height: 34px;
     padding: 5px 20px;
 }}
-QPushButton#DisconnectBtn:hover   {{ background: {c.RED_ERR};  }}
-QPushButton#DisconnectBtn:pressed {{ background: {c.RED_DEEP}; }}
+QPushButton#DisconnectBtn:hover   {{ background: rgba(231,76,60,38); border-color: {c.RED_ERR}; }}
+QPushButton#DisconnectBtn:pressed {{ background: rgba(192,57,43,51); border-color: {c.RED_DEEP}; }}
 
 QPushButton#SmBtn {{
-    background: {c.BG_ELEV};
+    background: transparent;
     color: {c.TXT_SEC};
     border: 1px solid {c.BORDER};
     border-radius: 5px;
@@ -260,27 +323,68 @@ QPushButton#SmBtn {{
     min-height: 28px;
 }}
 QPushButton#SmBtn:hover {{
-    background: {c.BORDER};
+    background: rgba({bur},{bug},{bub},64); /* Stronger background for visibility */
     color: {c.TXT_PRI};
     border-color: {c.BORDER_LT};
 }}
+QPushButton#SmBtn:pressed {{
+    background: rgba({bur},{bug},{bub},56);
+    color: {c.TXT_PRI};
+    border-color: {c.BORDER_LT};
+}}
+QPushButton#SmBtn:disabled {{
+    background: transparent;
+    color: {c.TXT_MUT};
+    border: 1px solid {c.BORDER};
+}}
 QPushButton#SmBtn[danger="true"] {{ color: {c.RED_ERR}; }}
 QPushButton#SmBtn[danger="true"]:hover {{
-    background: rgba(231,76,60,38);
+    background: rgba(231,76,60,64); /* Stronger red background for danger hover */
     border-color: {c.RED_ERR};
 }}
 
+/* Dynamic-property hover variants for SmBtn */
+QPushButton#SmBtn[hover="true"] {{
+    background: rgba({bur},{bug},{bub},64);
+    color: {c.TXT_PRI};
+    border-color: {c.BORDER_LT};
+}}
+QPushButton#SmBtn[danger="true"][hover="true"] {{
+    background: rgba(231,76,60,64);
+    border-color: {c.RED_ERR};
+}}
+QPushButton#SmBtn[danger="true"]:pressed {{
+    background: rgba(192,57,43,56);
+    border-color: {c.RED_DEEP};
+}}
+
 QPushButton#AddBtn {{
-    background: rgba({ar},{ag},{ab},38);
+    background: transparent;
     color: {c.ORANGE};
-    border: 1px solid rgba({ar},{ag},{ab},77);
+    border: 1px solid {c.ORANGE};
     border-radius: 5px;
     padding: 5px 14px;
     font-size: 11px;
     font-weight: 600;
     min-height: 28px;
 }}
-QPushButton#AddBtn:hover {{ background: rgba({ar},{ag},{ab},71); }}
+QPushButton#AddBtn:hover {{
+    color: {c.ORANGE};
+    background: rgba({ar},{ag},{ab},64);
+    border-color: {c.ORANGE};
+}}
+QPushButton#AddBtn:pressed {{
+    color: {c.ORANGE};
+    background: rgba({ar},{ag},{ab},56);
+    border-color: {c.ORANGE_D};
+}}
+
+/* Dynamic-property hover variant for AddBtn */
+QPushButton#AddBtn[hover="true"] {{
+    color: {c.ORANGE};
+    background: rgba({ar},{ag},{ab},64);
+    border-color: {c.ORANGE};
+}}
 """
 
 
@@ -295,33 +399,43 @@ QDialog {{
 }}
 QLabel {{ color: {c.TXT_SEC}; font-size: 12px; }}
 QLabel#title {{ color: {c.TXT_PRI}; font-size: 13px; font-weight: 600; }}
-QLineEdit {{
-    background: {c.BG_ELEV};
+    QLineEdit {{
+    background: transparent;
     color: {c.TXT_PRI};
     border: 1px solid {c.BORDER_LT};
-    border-radius: 5px;
-    padding: 7px 10px;
-    font-size: 12px;
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 11px;
+    min-height: 28px;
+    max-height: 28px;
     selection-background-color: {c.ORANGE};
 }}
 QLineEdit:focus {{ border-color: {c.ORANGE}; }}
-QPushButton {{
+QDialog QPushButton {{
     background: {c.BG_ELEV};
     color: {c.TXT_SEC};
     border: 1px solid {c.BORDER};
-    border-radius: 5px;
-    padding: 7px 14px;
-    font-size: 12px;
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 11px;
+    min-height: 28px;
 }}
-QPushButton:hover {{ background: {c.BORDER}; color: {c.TXT_PRI}; }}
-QPushButton#ok {{
-    background: {c.ORANGE};
-    color: #fff;
-    border: none;
+/* Ensure file dialog buttons match dialog buttons in height and padding (subtle) */
+QFileDialog QPushButton, QDialog QPushButton {{
+    min-height: 28px; /* slightly smaller */
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+}}
+QDialog QPushButton:hover {{ background: {c.BORDER}; color: {c.TXT_PRI}; }}
+QDialog QPushButton#ok {{
+    background: transparent;
+    color: {c.ORANGE};
+    border: 1px solid {c.ORANGE};
     font-weight: 600;
 }}
-QPushButton#ok:hover   {{ background: {c.ORANGE_L}; }}
-QPushButton#ok:pressed {{ background: {c.ORANGE_D}; }}
+QDialog QPushButton#ok:hover   {{ background: rgba({ar},{ag},{ab},38); border-color: {c.ORANGE_L}; }}
+QDialog QPushButton#ok:pressed {{ background: rgba({ar},{ag},{ab},56); border-color: {c.ORANGE_D}; }}
 
 QMessageBox {{
     background: {c.BG_BASE};
@@ -337,21 +451,23 @@ QMessageBox QPushButton {{
 }}
 QMessageBox QPushButton#ok,
 QMessageBox QPushButton#yes {{
-    background: {c.ORANGE};
-    color: #fff;
-    border: none;
+    background: transparent;
+    color: {c.ORANGE};
+    border: 1px solid {c.ORANGE};
     font-weight: 600;
 }}
 QMessageBox QPushButton#ok:hover,
 QMessageBox QPushButton#yes:hover {{
-    background: {c.ORANGE_L};
+    background: rgba({ar},{ag},{ab},38);
+    border-color: {c.ORANGE_L};
 }}
 QMessageBox QPushButton#ok:pressed,
 QMessageBox QPushButton#yes:pressed {{
-    background: {c.ORANGE_D};
+    background: rgba({ar},{ag},{ab},56);
+    border-color: {c.ORANGE_D};
 }}
 QMessageBox QPushButton#danger {{
-    background: rgba(231, 76, 60, 36);
+    background: transparent;
     color: {c.RED_ERR};
     border: 1px solid {c.RED_ERR};
     font-weight: 600;
@@ -375,10 +491,21 @@ QFileDialog QListView {{
 }}
 QFileDialog QLineEdit,
 QFileDialog QComboBox {{
-    min-height: 34px;
-    max-height: 34px;
-    padding: 0 10px;
-    border-radius: 5px;
+    min-height: 28px;
+    max-height: 28px;
+    padding: 0 8px;
+    border-radius: 4px;
+}}
+QFileDialog QLineEdit {{
+    background: transparent;
+    color: {c.TXT_PRI};
+    border: 1px solid {c.BORDER_LT};
+}}
+QFileDialog QPushButton, QFileDialog QToolButton {{
+    min-height: 28px;
+    min-width: 28px;
+    padding: 4px 8px;
+    border-radius: 4px;
 }}
 QFileDialog QComboBox::drop-down {{
     border: none;
@@ -885,25 +1012,32 @@ class AddProfileDialog(QDialog):
         form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
         self.name_e = QLineEdit(); self.name_e.setPlaceholderText("My VPN")
-        self.name_e.setMinimumHeight(34); form.addRow("Name:", self.name_e)
+        self.name_e.setMinimumHeight(28); form.addRow("Name:", self.name_e)
 
         pr = QHBoxLayout(); pr.setSpacing(6)
         self.path_e = QLineEdit(); self.path_e.setPlaceholderText("config.ovpn")
-        self.path_e.setMinimumHeight(34)
-        brw = QPushButton("…"); brw.setFixedSize(34, 34); brw.clicked.connect(self._browse)
-        pr.addWidget(self.path_e); pr.addWidget(brw); form.addRow(".ovpn:", pr)
+        self.path_e.setMinimumHeight(28)
+        brw = QPushButton("…")
+        brw.setObjectName("SmBtn")
+        brw.setFixedSize(38, 28)
+        brw.clicked.connect(self._browse)
+        # Ensure the small browse button is vertically centered with the input
+        pr.addWidget(self.path_e)
+        pr.addWidget(brw, 0, Qt.AlignmentFlag.AlignVCenter)
+        form.addRow(".ovpn:", pr)
 
         self.user_e = QLineEdit(); self.user_e.setPlaceholderText("optional")
-        self.user_e.setMinimumHeight(34); form.addRow("User:", self.user_e)
+        self.user_e.setMinimumHeight(28); form.addRow("User:", self.user_e)
 
         self.pass_e = QLineEdit(); self.pass_e.setPlaceholderText("optional")
         self.pass_e.setEchoMode(QLineEdit.EchoMode.Password)
-        self.pass_e.setMinimumHeight(34); form.addRow("Pass:", self.pass_e)
+        self.pass_e.setMinimumHeight(28); form.addRow("Pass:", self.pass_e)
 
         lay.addLayout(form); lay.addStretch()
         brow = QHBoxLayout(); brow.setSpacing(8)
-        cancel = QPushButton("Cancel"); cancel.setMinimumHeight(34); cancel.clicked.connect(self.reject)
-        ok = QPushButton("Save"); ok.setObjectName("ok"); ok.setMinimumHeight(34)
+        cancel = QPushButton("Cancel"); cancel.setMinimumHeight(28); cancel.clicked.connect(self.reject)
+        ok = QPushButton("Upload"); ok.setObjectName("ok"); ok.setMinimumHeight(28)
+        ok.setToolTip("Upload this profile")
         ok.clicked.connect(self.accept)
         brow.addWidget(cancel); brow.addWidget(ok); lay.addLayout(brow)
 
@@ -931,7 +1065,9 @@ class AddProfileDialog(QDialog):
         dlg.setFileMode(QFileDialog.FileMode.ExistingFile)
         dlg.setNameFilter("OpenVPN (*.ovpn);;All (*)")
         dlg.setOption(QFileDialog.Option.DontUseNativeDialog, True)
-        dlg.setStyleSheet(build_dialog_css())
+        # Apply the full app stylesheet so QFileDialog gets the same
+        # button and SmBtn rules from the main CSS.
+        dlg.setStyleSheet(build_app_css())
 
         # Start in home for easier navigation; if field already has a path, reuse it.
         start_dir = get_desktop_user_home()
@@ -951,6 +1087,25 @@ class AddProfileDialog(QDialog):
                 sidebar_urls.append(QUrl.fromLocalFile(str(place)))
         if sidebar_urls:
             dlg.setSidebarUrls(sidebar_urls)
+
+        # Ensure internal dialog buttons and toolbuttons adopt the app styles
+        for tb in dlg.findChildren(QToolButton):
+            try:
+                tb.setObjectName("SmBtn")
+                tb.setFixedSize(28, 28)
+            except Exception:
+                pass
+
+        for pb in dlg.findChildren(QPushButton):
+            try:
+                txt = (pb.text() or "").strip().lower()
+                if "open" in txt:
+                    pb.setObjectName("ok")
+                elif "cancel" in txt:
+                    pb.setObjectName("SmBtn")
+                pb.setMinimumHeight(28)
+            except Exception:
+                pass
 
         if dlg.exec() == QDialog.DialogCode.Accepted:
             files = dlg.selectedFiles()
@@ -1000,23 +1155,44 @@ class OpenVPNConnectGUI(QMainWindow):
 
     def _make_connect_style(self) -> str:
         c = Colors
+        grr, grg, grb = c._hex_to_rgb(c.GRN_OK)
+        gr_l = c._lighten(c.GRN_OK, 0.15)
+        gr_d = c._darken(c.GRN_OK, 0.18)
         return (
-            f"QPushButton {{ background: {c.ORANGE}; color: #fff; border: none; "
+            f"QPushButton {{ background: transparent; color: {c.GRN_OK}; border: 1px solid {c.GRN_OK}; "
             f"border-radius: 5px; font-size: 12px; font-weight: 600; }}"
-            f"QPushButton:hover   {{ background: {c.ORANGE_L}; }}"
-            f"QPushButton:pressed {{ background: {c.ORANGE_D}; }}"
-            f"QPushButton:disabled {{ background: {c.BG_ELEV}; color: {c.TXT_MUT}; "
+            f"QPushButton:hover   {{ background: rgba({grr},{grg},{grb},38); border-color: {gr_l}; }}"
+            f"QPushButton:pressed {{ background: rgba({grr},{grg},{grb},56); border-color: {gr_d}; }}"
+            f"QPushButton:disabled {{ background: transparent; color: {c.TXT_MUT}; "
             f"border: 1px solid {c.BORDER}; }}"
         )
 
     def _make_disconnect_style(self) -> str:
         c = Colors
         return (
-            f"QPushButton {{ background: {c.RED_DARK}; color: #fff; border: none; "
+            f"QPushButton {{ background: transparent; color: {c.RED_ERR}; border: 1px solid {c.RED_ERR}; "
             f"border-radius: 5px; font-size: 12px; font-weight: 600; }}"
-            f"QPushButton:hover   {{ background: {c.RED_ERR};  }}"
-            f"QPushButton:pressed {{ background: {c.RED_DEEP}; }}"
+            f"QPushButton:hover   {{ background: rgba(231,76,60,38); border-color: {c.RED_ERR}; }}"
+            f"QPushButton:pressed {{ background: rgba(192,57,43,51); border-color: {c.RED_DEEP}; }}"
         )
+
+    def _make_sm_style(self, danger: bool = False) -> str:
+        c = Colors
+        bur, bug, bub = Colors._hex_to_rgb(c.BLUE_UP)
+        if not danger:
+            return (
+                f"QPushButton {{ background: transparent; color: {c.TXT_SEC}; border: 1px solid {c.BORDER}; "
+                f"border-radius: 5px; padding: 5px 12px; font-size: 11px; min-height: 28px; }}"
+                f"QPushButton:hover {{ background: rgba({bur},{bug},{bub},64); color: {c.TXT_PRI}; border-color: {c.BORDER_LT}; }}"
+                f"QPushButton:pressed {{ background: rgba({bur},{bug},{bub},56); color: {c.TXT_PRI}; border-color: {c.BORDER_LT}; }}"
+            )
+        else:
+            return (
+                f"QPushButton {{ background: transparent; color: {c.RED_ERR}; border: 1px solid {c.RED_ERR}; "
+                f"border-radius: 5px; padding: 5px 12px; font-size: 11px; min-height: 28px; }}"
+                f"QPushButton:hover {{ background: rgba(231,76,60,64); border-color: {c.RED_ERR}; }}"
+                f"QPushButton:pressed {{ background: rgba(192,57,43,56); border-color: {c.RED_DEEP}; }}"
+            )
 
     def _apply_theme(self, accent_hex: str, is_dark: bool):
         """Rebuild all styles when Ubuntu/GNOME theme changes."""
@@ -1043,10 +1219,16 @@ class OpenVPNConnectGUI(QMainWindow):
 
     # ── Build UI ──────────────────────────────────────────────────────────────
 
+
     def _build(self):
-        self.setWindowTitle(APP_NAME); self.setMinimumSize(680, 520); self.resize(700, 540)
-        root = QWidget(); self.setCentralWidget(root)
-        rl = QHBoxLayout(root); rl.setContentsMargins(0, 0, 0, 0); rl.setSpacing(0)
+        self.setWindowTitle(APP_NAME)
+        self.setMinimumSize(680, 520)
+        self.resize(700, 540)
+        root = QWidget()
+        self.setCentralWidget(root)
+        rl = QHBoxLayout(root)
+        rl.setContentsMargins(0, 0, 0, 0)
+        rl.setSpacing(0)
 
         # Sidebar
         sb = QWidget(); sb.setObjectName("Sidebar"); sb.setFixedWidth(172)
@@ -1075,12 +1257,16 @@ class OpenVPNConnectGUI(QMainWindow):
             self._navbtns.append(b); sbl.addWidget(b)
 
         sbl.addStretch()
-        try:   dev_str = get_developer_string()
-        except: dev_str = "OpenVPN Manager"
+        try:
+            dev_str = get_developer_string()
+        except:
+            dev_str = "OpenVPN Manager"
         vl = QLabel(f"{dev_str}  ·  v{APP_VERSION}")
-        vl.setAlignment(Qt.AlignmentFlag.AlignCenter); vl.setWordWrap(True)
+        vl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        vl.setWordWrap(True)
         vl.setStyleSheet(f"color: {Colors.TXT_MUT}; font-size: 9px; padding: 6px 8px;")
-        sbl.addWidget(vl); rl.addWidget(sb)
+        sbl.addWidget(vl)
+        rl.addWidget(sb)
 
         # Content
         content = QWidget(); content.setObjectName("Content")
@@ -1093,6 +1279,11 @@ class OpenVPNConnectGUI(QMainWindow):
         self.stack.addWidget(self._pg_stats())
         self.stack.addWidget(self._pg_log())
         self._nav(0)
+
+        # Force stylesheet after UI build to ensure all widgets get the global style
+        app = QApplication.instance()
+        if app:
+            app.setStyleSheet(build_app_css())
 
     def _nav(self, idx):
         self.stack.setCurrentIndex(idx)
@@ -1190,16 +1381,40 @@ class OpenVPNConnectGUI(QMainWindow):
         hdr = QHBoxLayout()
         t = QLabel("Profiles"); t.setStyleSheet(f"color: {c.TXT_PRI}; font-size: 14px; font-weight: 700;")
         hdr.addWidget(t); hdr.addStretch()
-        ab = QPushButton("＋  Add"); ab.setObjectName("AddBtn"); ab.clicked.connect(self._add_profile)
-        hdr.addWidget(ab); lay.addLayout(hdr)
-        self._profile_list = QListWidget(); self._profile_list.itemClicked.connect(self._on_list_click)
+        ab = HoverAwareButton("＋  Add")
+        ab.setObjectName("AddBtn")
+        ab.clicked.connect(self._add_profile)
+        ab.setStyleSheet(self._make_connect_style())  # Use same connect style (accent)
+        # Ensure hover events are delivered to the button
+        ab.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+        ab.setMouseTracking(True)
+        hdr.addWidget(ab)
+        lay.addLayout(hdr)
+        self._profile_list = QListWidget()
+        self._profile_list.itemClicked.connect(self._on_list_click)
+        self._profile_list.itemSelectionChanged.connect(self._on_list_click)
         lay.addWidget(self._profile_list, 1)
         btn_row = QHBoxLayout(); btn_row.setSpacing(8)
-        self._edit_btn = QPushButton("✎  Edit"); self._edit_btn.setObjectName("SmBtn")
-        self._edit_btn.setEnabled(False); self._edit_btn.clicked.connect(self._edit_profile)
-        self._del_btn = QPushButton("✕  Delete"); self._del_btn.setObjectName("SmBtn")
-        self._del_btn.setProperty("danger", "true"); self._del_btn.setEnabled(False)
+        self._edit_btn = HoverAwareButton("✎  Edit")
+        self._edit_btn.setObjectName("SmBtn")
+        self._edit_btn.setEnabled(False)
+        self._edit_btn.clicked.connect(self._edit_profile)
+        # Ensure hover events are delivered when enabled later
+        self._edit_btn.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+        self._edit_btn.setMouseTracking(True)
+        self._edit_btn.setObjectName("SmBtn")  # Ensure object name is set after creation
+        self._edit_btn.setStyleSheet(self._make_sm_style(danger=False))
+
+        self._del_btn = HoverAwareButton("✕  Delete")
+        self._del_btn.setObjectName("SmBtn")
+        self._del_btn.setProperty("danger", "true")
+        self._del_btn.setEnabled(False)
         self._del_btn.clicked.connect(self._delete_profile)
+        # Ensure hover events are delivered when enabled later
+        self._del_btn.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+        self._del_btn.setMouseTracking(True)
+        self._del_btn.setObjectName("SmBtn")  # Ensure object name is set after creation
+        self._del_btn.setStyleSheet(self._make_sm_style(danger=True))
         btn_row.addStretch(); btn_row.addWidget(self._edit_btn); btn_row.addWidget(self._del_btn)
         lay.addLayout(btn_row); self._refresh_list()
         return pg
@@ -1248,7 +1463,7 @@ class OpenVPNConnectGUI(QMainWindow):
 
     def _refresh_combo(self):
         self._combo.blockSignals(True); self._combo.clear()
-        self._combo.addItem("— select profile —")
+        self._combo.addItem("Select Profile")
         for n in self.cfgman.configs: self._combo.addItem(n)
         if self.cur_cfg:
             i = self._combo.findText(self.cur_cfg.name)
@@ -1260,12 +1475,18 @@ class OpenVPNConnectGUI(QMainWindow):
         for n, cfg in self.cfgman.configs.items():
             item = QListWidgetItem()
             connected = self.connected and self.cur_cfg and self.cur_cfg.name == n
-            item.setText(f"{'● ' if connected else '  '}{n}  —  {os.path.basename(cfg.config_path)}")
+            item.setText(f"{ '● ' if connected else '  '}{n}  —  {os.path.basename(cfg.config_path)}")
+            # Make items visually compact and consistent across platforms
+            try:
+                item.setSizeHint(QSize(0, 34))
+            except Exception:
+                pass
+            item.setData(Qt.ItemDataRole.UserRole, n)
             self._profile_list.addItem(item)
         self._edit_btn.setEnabled(False); self._del_btn.setEnabled(False)
 
     def _on_combo(self, text):
-        if text and text != "— select profile —":
+        if text and text != "Select Profile":
             cfg = self.cfgman.get(text)
             if cfg:
                 self.cur_cfg = cfg
@@ -1278,8 +1499,17 @@ class OpenVPNConnectGUI(QMainWindow):
                 self._profile_badge.setText("No profile selected")
                 self._conn_btn.setEnabled(False)
 
-    def _on_list_click(self, item):
-        self._edit_btn.setEnabled(True); self._del_btn.setEnabled(True)
+    def _on_list_click(self, *_):
+        has_selection = self._profile_list.currentItem() is not None
+        self._edit_btn.setEnabled(has_selection)
+        self._del_btn.setEnabled(has_selection)
+
+    def _selected_profile_name(self) -> Optional[str]:
+        item = self._profile_list.currentItem()
+        if not item:
+            return None
+        name = item.data(Qt.ItemDataRole.UserRole)
+        return name if isinstance(name, str) and name else None
 
     def _toggle(self):
         if self.connected or self.connecting:
@@ -1403,9 +1633,9 @@ class OpenVPNConnectGUI(QMainWindow):
             self._log(f"Profile '{data['name']}' added.")
 
     def _edit_profile(self):
-        item = self._profile_list.currentItem()
-        if not item: return
-        name = item.text().strip().lstrip("● ").split("  —  ")[0].strip()
+        name = self._selected_profile_name()
+        if not name:
+            return
         cfg = self.cfgman.get(name)
         if not cfg: return
         d = AddProfileDialog(self, cfg)
@@ -1419,9 +1649,9 @@ class OpenVPNConnectGUI(QMainWindow):
             self.cfgman.add(VPNConfig(**data)); self._refresh_list(); self._refresh_combo()
 
     def _delete_profile(self):
-        item = self._profile_list.currentItem()
-        if not item: return
-        name = item.text().strip().lstrip("● ").split("  —  ")[0].strip()
+        name = self._selected_profile_name()
+        if not name:
+            return
         confirmed = themed_confirm(self, "Delete Profile", f"Delete profile '{name}'?", destructive=True)
         if confirmed:
             self.cfgman.remove(name); self._refresh_list(); self._refresh_combo()

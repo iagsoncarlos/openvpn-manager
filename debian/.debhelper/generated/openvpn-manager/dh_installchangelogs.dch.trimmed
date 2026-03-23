@@ -1,27 +1,33 @@
+openvpn-manager (0.2.11-1) unstable; urgency=medium
+
+  * Version bump to 0.2.11
+
+ -- Iagson Carlos Lima Silva <iagsoncarlos@gmail.com>  Mon, 23 Mar 2026 03:19:45 +0000
+
 openvpn-manager (0.2.10-1) unstable; urgency=medium
 
   * Version 0.2.10
   * Auto-generated release
 
- -- Iágson Carlos Lima Silva <iagsoncarlos@gmail.com>  Thu, 12 Mar 2026 19:07:52 +0000
+ -- Iagson Carlos Lima Silva <iagsoncarlos@gmail.com>  Thu, 12 Mar 2026 19:07:52 +0000
 
 openvpn-manager (0.2.6-1) unstable; urgency=medium
 
   * Version bump to 0.2.6
 
- -- Iágson Carlos Lima Silva <iagsoncarlos@gmail.com>  Fri, 25 Jul 2024 22:07:05 +0000
+ -- Iagson Carlos Lima Silva <iagsoncarlos@gmail.com>  Fri, 25 Jul 2024 22:07:05 +0000
 
 openvpn-manager (0.2.5-1) unstable; urgency=medium
 
   * Version bump to 0.2.5
 
- -- Iágson Carlos Lima Silva <iagsoncarlos@gmail.com>  Fri, 25 Jul 2024 21:17:03 +0000
+ -- Iagson Carlos Lima Silva <iagsoncarlos@gmail.com>  Fri, 25 Jul 2024 21:17:03 +0000
 
 openvpn-manager (0.2.4-1) unstable; urgency=medium
 
   * Version bump to 0.2.4
 
- -- Iágson Carlos Lima Silva <iagsoncarlos@gmail.com>  Fri, 25 Jul 2024 20:47:14 +0000
+ -- Iagson Carlos Lima Silva <iagsoncarlos@gmail.com>  Fri, 25 Jul 2024 20:47:14 +0000
 
 openvpn-manager (0.2.2-1) unstable; urgency=medium
 
@@ -33,4 +39,4 @@ openvpn-manager (0.2.2-1) unstable; urgency=medium
   * Complete offline installation capability
   * Automatic fallback to internet installation if wheels fail
 
- -- Iágson Carlos Lima Silva <iagsoncarlos@gmail.com>  Fri, 25 Jul 2024 00:39:26 +0000
+ -- Iagson Carlos Lima Silva <iagsoncarlos@gmail.com>  Fri, 25 Jul 2024 00:39:26 +0000
