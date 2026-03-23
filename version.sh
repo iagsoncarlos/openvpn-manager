@@ -89,7 +89,7 @@ update_version_in_files() {
         echo "" >> "$temp_changelog"
         echo "  * Version bump to $new_version" >> "$temp_changelog"
         echo "" >> "$temp_changelog"
-        echo " -- Iágson Carlos Lima Silva <iagsoncarlos@gmail.com>  $current_date" >> "$temp_changelog"
+        echo " -- Iagson Carlos Lima Silva <iagsoncarlos@gmail.com>  $current_date" >> "$temp_changelog"
         echo "" >> "$temp_changelog"
         cat "debian/changelog" >> "$temp_changelog"
         mv "$temp_changelog" "debian/changelog"
