@@ -42,7 +42,7 @@ setup(
     author="Iágson Carlos Lima Silva",
     author_email="iagsoncarlos@gmail.com",
     url="https://github.com/iagsoncarlos/openvpn-manager",
-    py_modules=["main", "config"],  # Just list them, don't import
+    py_modules=["main", "config", "theme"],  # Just list them, don't import
     packages=[],  # No packages, just modules
     install_requires=[],  # No external dependencies for .deb build
     entry_points={
