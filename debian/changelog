@@ -1,3 +1,9 @@
+openvpn-manager (0.2.12-1) unstable; urgency=medium
+
+  * Version bump to 0.2.12
+
+ -- Iagson Carlos Lima Silva <iagsoncarlos@gmail.com>  Mon, 23 Mar 2026 05:25:58 +0000
+
 openvpn-manager (0.2.11-1) unstable; urgency=medium
 
   * Version bump to 0.2.11
