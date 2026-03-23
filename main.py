@@ -615,20 +615,47 @@ class TinyChart(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         w, h = self.width(), self.height()
         p.fillRect(0, 0, w, h, QColor(Colors.BG_BASE))
+
+        left_pad, right_pad, top_pad, bottom_pad = 50, 6, 8, 12
+        plot_w = max(10, w - left_pad - right_pad)
+        plot_h = max(10, h - top_pad - bottom_pad)
+        plot_x0, plot_y0 = left_pad, top_pad
+        plot_x1, plot_y1 = plot_x0 + plot_w, plot_y0 + plot_h
+
+        pk = max(max(self.ups, default=0), max(self.dns, default=0), 1.0)
+
+        # Draw 3-value scale (top/mid/bottom) so users can read traffic magnitude quickly.
+        lbl_pen = QPen(QColor(Colors.TXT_MUT))
+        p.setPen(lbl_pen)
+        fm = p.fontMetrics()
+        txt_h = max(12, fm.height())
+        for ratio in (1.0, 0.5, 0.0):
+            y = int(plot_y1 - plot_h * ratio)
+            guide_pen = QPen(QColor(Colors.BORDER))
+            guide_pen.setStyle(Qt.PenStyle.DotLine)
+            p.setPen(guide_pen)
+            p.drawLine(plot_x0, y, plot_x1, y)
+
+            p.setPen(lbl_pen)
+            txt_top = max(0, min(h - txt_h, y - (txt_h // 2)))
+            p.drawText(QRect(2, txt_top, left_pad - 8, txt_h),
+                       Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                       f"{pk * ratio:.1f} KB/s")
+
         n = max(len(self.ups), len(self.dns))
         if n < 2: return
-        pk = max(max(self.ups, default=0), max(self.dns, default=0), 1.0)
 
         def series(pts, hex_col, alpha):
             if len(pts) < 2: return
             fill = QPainterPath(); line = QPainterPath()
             for i, v in enumerate(pts):
-                x = int(w * i / (n - 1)); y = int(h - h * v / pk)
+                x = int(plot_x0 + plot_w * i / (n - 1))
+                y = int(plot_y1 - plot_h * v / pk)
                 if i == 0:
-                    fill.moveTo(x, h); fill.lineTo(x, y); line.moveTo(x, y)
+                    fill.moveTo(x, plot_y1); fill.lineTo(x, y); line.moveTo(x, y)
                 else:
                     fill.lineTo(x, y); line.lineTo(x, y)
-            fill.lineTo(w, h); fill.closeSubpath()
+            fill.lineTo(plot_x1, plot_y1); fill.closeSubpath()
             fc = QColor(hex_col); fc.setAlpha(alpha); p.fillPath(fill, fc)
             pen = QPen(QColor(hex_col)); pen.setWidth(1)
             p.setPen(pen); p.setBrush(Qt.BrushStyle.NoBrush); p.drawPath(line)
@@ -769,27 +796,11 @@ class OpenVPNThread(QThread):
 
     def stop(self):
         self.should_stop = True
-        try:
-            kill = ['pkill', '-TERM', 'openvpn']
-            if os.getuid() == 0: subprocess.run(kill, capture_output=True, timeout=10)
-            else: run_privileged(kill, capture_output=True, timeout=10)
-            import time; time.sleep(2)
-            if subprocess.run(['pgrep', 'openvpn'], capture_output=True).returncode == 0:
-                kill9 = ['pkill', '-KILL', 'openvpn']
-                if os.getuid() == 0: subprocess.run(kill9, capture_output=True, timeout=10)
-                else: run_privileged(kill9, capture_output=True, timeout=10)
-        except: pass
         if self.process and self.process.poll() is None:
             try:
                 import signal as _sig
                 os.killpg(os.getpgid(self.process.pid), _sig.SIGTERM)
-                try: self.process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    os.killpg(os.getpgid(self.process.pid), _sig.SIGKILL)
-                    self.process.wait()
             except: pass
-            finally: self.process = None
-        self._cleanup()
 
 
 # ── Data models ───────────────────────────────────────────────────────────────
@@ -934,6 +945,8 @@ class OpenVPNConnectGUI(QMainWindow):
         self.cfgman = ConfigManager()
         self.vpn_thread = None
         self.connected = False
+        self.connecting = False
+        self.cancel_requested = False
         self.cur_cfg: Optional[VPNConfig] = None
         self.start_time = None; self.vpn_iface = None
         self.sent_pts, self.recv_pts = [], []
@@ -983,7 +996,7 @@ class OpenVPNConnectGUI(QMainWindow):
         self._conn_btn_style_connect    = self._make_connect_style()
         self._conn_btn_style_disconnect = self._make_disconnect_style()
 
-        if self.connected:
+        if self.connected or self.connecting:
             self._conn_btn.setStyleSheet(self._conn_btn_style_disconnect)
             self._big_status.setStyleSheet(
                 f"color: {c.ORANGE}; font-size: 14px; font-weight: 700; background: transparent;"
@@ -1224,9 +1237,10 @@ class OpenVPNConnectGUI(QMainWindow):
             if cfg:
                 self.cur_cfg = cfg
                 self._profile_badge.setText(os.path.basename(cfg.config_path))
-                if not self.connected: self._conn_btn.setEnabled(True)
+                if not self.connected and not self.connecting:
+                    self._conn_btn.setEnabled(True)
         else:
-            if not self.connected:
+            if not self.connected and not self.connecting:
                 self.cur_cfg = None
                 self._profile_badge.setText("No profile selected")
                 self._conn_btn.setEnabled(False)
@@ -1235,13 +1249,17 @@ class OpenVPNConnectGUI(QMainWindow):
         self._edit_btn.setEnabled(True); self._del_btn.setEnabled(True)
 
     def _toggle(self):
-        if self.connected: self._disconnect()
+        if self.connected or self.connecting:
+            self._disconnect()
         else: self._connect()
 
     def _connect(self):
+        if self.connecting or self.connected:
+            return
         if not self.cur_cfg: return
         if not os.path.exists(self.cur_cfg.config_path):
             themed_error(self, "Error", "File not found:", self.cur_cfg.config_path); return
+        self.cancel_requested = False
         self.vpn_thread = OpenVPNThread(
             self.cur_cfg.config_path, self.cur_cfg.username or None, self.cur_cfg.password or None,
         )
@@ -1250,7 +1268,11 @@ class OpenVPNConnectGUI(QMainWindow):
         self.vpn_thread.connection_failed.connect(self._on_failed)
         self.vpn_thread.finished_cleanup.connect(self._on_thread_done)
         self.vpn_thread.start()
-        self._conn_btn.setEnabled(False); self._dot.set_state("spinning")
+        self.connecting = True
+        self._conn_btn.setStyleSheet(self._conn_btn_style_disconnect)
+        self._conn_btn.setText("Cancel"); self._conn_btn.setEnabled(True)
+        self._combo.setEnabled(False)
+        self._dot.set_state("spinning")
         self._big_status.setText("Connecting…")
         self._big_status.setStyleSheet(
             f"color: {Colors.ORANGE}; font-size: 14px; font-weight: 700; background: transparent;"
@@ -1259,6 +1281,20 @@ class OpenVPNConnectGUI(QMainWindow):
         self._log(f"=== Connecting to '{self.cur_cfg.name}' ===")
 
     def _disconnect(self):
+        was_connecting = self.connecting and not self.connected
+        self.connecting = False
+
+        # Canceling an in-progress connection must stay non-blocking to avoid UI freeze.
+        if was_connecting:
+            self.cancel_requested = True
+            if self.vpn_thread and self.vpn_thread.isRunning():
+                self.vpn_thread.stop()
+            self._log("Connection attempt cancelled.")
+            self.connected = False
+            self._apply_disconnected(); self._reset_live()
+            self.start_time = self.vpn_iface = None; self._refresh_list()
+            return
+
         if self.vpn_thread and self.vpn_thread.isRunning():
             self.vpn_thread.stop(); self.vpn_thread.wait(15000)
         try:
@@ -1268,11 +1304,13 @@ class OpenVPNConnectGUI(QMainWindow):
                 if os.getuid() == 0: subprocess.run(kill, capture_output=True, timeout=10)
                 else: run_privileged(kill, capture_output=True, timeout=10)
         except: pass
-        self._finalize("Manual disconnect"); self.connected = False
+        self._finalize("Manual disconnect")
+        self.connected = False
         self._apply_disconnected(); self._reset_live()
         self.start_time = self.vpn_iface = None; self._refresh_list()
 
     def _apply_disconnected(self):
+        self.connecting = False
         self._dot.set_state("off")
         self._big_status.setText("Disconnected")
         self._big_status.setStyleSheet(
@@ -1280,8 +1318,11 @@ class OpenVPNConnectGUI(QMainWindow):
         )
         self._conn_btn.setStyleSheet(self._conn_btn_style_connect)
         self._conn_btn.setText("Connect"); self._conn_btn.setEnabled(self.cur_cfg is not None)
+        self._combo.setEnabled(True)
 
     def _on_connected(self, iface):
+        self.connecting = False
+        self.cancel_requested = False
         self.connected = True; self.start_time = datetime.datetime.now()
         self.vpn_iface = iface or self._detect_iface(); self.sess_final = False
         self.last_sent = self.last_recv = None; self.ss_sent = self.ss_recv = None
@@ -1293,15 +1334,26 @@ class OpenVPNConnectGUI(QMainWindow):
         )
         self._conn_btn.setStyleSheet(self._conn_btn_style_disconnect)
         self._conn_btn.setText("Disconnect"); self._conn_btn.setEnabled(True)
+        self._combo.setEnabled(True)
         self._log(f"✓ Connected!  iface={self.vpn_iface or 'unknown'}"); self._refresh_list()
 
     def _on_failed(self, err):
+        self.connecting = False
+        if self.cancel_requested:
+            self.cancel_requested = False
+            self.connected = False
+            self._apply_disconnected(); self._reset_live()
+            self.start_time = self.vpn_iface = None
+            self._log(f"Connection cancelled: {err}")
+            return
         self._finalize("Failed"); self.connected = False
         self._apply_disconnected(); self._reset_live()
         self.start_time = self.vpn_iface = None
         self._log(f"✗ FAILED: {err}"); themed_error(self, "Connection Failed", err)
 
     def _on_thread_done(self):
+        if self.cancel_requested:
+            self.cancel_requested = False
         if not self.connected:
             self._apply_disconnected(); self._reset_live()
             self.start_time = self.vpn_iface = None
