@@ -1,7 +1,7 @@
 79ec26c529d12b71296f5e6b871178fe  usr/bin/openvpn-manager
 36ab8f9ede138548121b0ff209325f1d  usr/bin/openvpn-manager-launcher
 8b22e7202ee19f371b922ae0abdb26d6  usr/lib/python3/dist-packages/config.py
-37e56a4b2f59b0533d9ce5121893414e  usr/lib/python3/dist-packages/main.py
+4747c84e572139380c4e09681e25b382  usr/lib/python3/dist-packages/main.py
 f82d14d24d97945fd33ea75e6cb99e01  usr/lib/python3/dist-packages/openvpn_manager-0.2.10.egg-info/PKG-INFO
 68b329da9893e34099c7d8ad5cb9c940  usr/lib/python3/dist-packages/openvpn_manager-0.2.10.egg-info/dependency_links.txt
 1e63e8a619d6b4b125e91b0379489a61  usr/lib/python3/dist-packages/openvpn_manager-0.2.10.egg-info/entry_points.txt

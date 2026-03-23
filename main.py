@@ -102,6 +102,7 @@ def build_main_css() -> str:
     return f"""
 QMainWindow {{ background: {c.BG_BASE}; }}
 QWidget {{ font-family: 'Ubuntu', 'Noto Sans', 'Segoe UI', sans-serif; }}
+QPushButton:focus {{ outline: none; }}
 
 #Sidebar {{
     background: {c.BG_SIDEBAR};
@@ -126,6 +127,10 @@ QPushButton#NavBtn:checked {{
 QPushButton#NavBtn:hover:!checked {{
     background: rgba(255,255,255,13);
     color: {c.TXT_SEC};
+}}
+QPushButton#NavBtn:pressed {{
+    background: rgba({ar},{ag},{ab},30);
+    color: {c.ORANGE};
 }}
 
 #Content {{ background: {c.BG_BASE}; }}
@@ -616,20 +621,46 @@ class TinyChart(QWidget):
         w, h = self.width(), self.height()
         p.fillRect(0, 0, w, h, QColor(Colors.BG_BASE))
 
-        left_pad, right_pad, top_pad, bottom_pad = 50, 6, 8, 12
+        right_pad, top_pad, bottom_pad = 6, 8, 12
+
+        raw_peak = max(max(self.ups, default=0.0), max(self.dns, default=0.0))
+        if raw_peak <= 0:
+            scale_max = 1.0
+        else:
+            exp = math.floor(math.log10(raw_peak))
+            base = raw_peak / (10 ** exp)
+            if base <= 1:
+                nice = 1
+            elif base <= 2:
+                nice = 2
+            elif base <= 5:
+                nice = 5
+            else:
+                nice = 10
+            scale_max = float(nice * (10 ** exp))
+
+        def fmt_rate(v):
+            txt = f"{v:.1f}" if v < 10 else f"{v:.0f}"
+            if "." in txt:
+                txt = txt.rstrip("0").rstrip(".")
+            return f"{txt} KB/s"
+
+        scale_vals = (scale_max, scale_max * 0.5, 0.0)
+        fm = p.fontMetrics()
+        txt_h = max(12, fm.height())
+        max_lbl_w = max(fm.horizontalAdvance(fmt_rate(v)) for v in scale_vals)
+        left_pad = max(50, max_lbl_w + 12)
+
         plot_w = max(10, w - left_pad - right_pad)
         plot_h = max(10, h - top_pad - bottom_pad)
         plot_x0, plot_y0 = left_pad, top_pad
         plot_x1, plot_y1 = plot_x0 + plot_w, plot_y0 + plot_h
 
-        pk = max(max(self.ups, default=0), max(self.dns, default=0), 1.0)
-
         # Draw 3-value scale (top/mid/bottom) so users can read traffic magnitude quickly.
         lbl_pen = QPen(QColor(Colors.TXT_MUT))
         p.setPen(lbl_pen)
-        fm = p.fontMetrics()
-        txt_h = max(12, fm.height())
-        for ratio in (1.0, 0.5, 0.0):
+
+        for ratio, value in zip((1.0, 0.5, 0.0), scale_vals):
             y = int(plot_y1 - plot_h * ratio)
             guide_pen = QPen(QColor(Colors.BORDER))
             guide_pen.setStyle(Qt.PenStyle.DotLine)
@@ -640,7 +671,7 @@ class TinyChart(QWidget):
             txt_top = max(0, min(h - txt_h, y - (txt_h // 2)))
             p.drawText(QRect(2, txt_top, left_pad - 8, txt_h),
                        Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                       f"{pk * ratio:.1f} KB/s")
+                       fmt_rate(value))
 
         n = max(len(self.ups), len(self.dns))
         if n < 2: return
@@ -650,7 +681,7 @@ class TinyChart(QWidget):
             fill = QPainterPath(); line = QPainterPath()
             for i, v in enumerate(pts):
                 x = int(plot_x0 + plot_w * i / (n - 1))
-                y = int(plot_y1 - plot_h * v / pk)
+                y = int(plot_y1 - plot_h * v / scale_max)
                 if i == 0:
                     fill.moveTo(x, plot_y1); fill.lineTo(x, y); line.moveTo(x, y)
                 else:
@@ -1038,6 +1069,8 @@ class OpenVPNConnectGUI(QMainWindow):
         for icon, label, idx in [("●", "Status", 0), ("☰", "Profiles", 1),
                                    ("📊", "Stats", 2), ("▶", "Log", 3)]:
             b = QPushButton(f"  {icon}   {label}"); b.setObjectName("NavBtn"); b.setCheckable(True)
+            b.setAutoExclusive(True)
+            b.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             b.clicked.connect(lambda _=False, i=idx: self._nav(i))
             self._navbtns.append(b); sbl.addWidget(b)
 
