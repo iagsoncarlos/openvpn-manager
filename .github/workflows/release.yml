@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     if: github.event.pull_request.merged == true
@@ -16,6 +20,8 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     - name: Setup Python
       uses: actions/setup-python@v4
@@ -29,50 +35,46 @@ jobs:
           python3-setuptools python3-dev dpkg-dev devscripts fakeroot
         python -m pip install --upgrade pip setuptools wheel build
 
-    - name: Increment version
+    - name: Bump version and changelog
       run: |
-        CURRENT=$(cat VERSION)
-        IFS='.' read -ra V <<< "$CURRENT"
-        NEW="${V[0]}.${V[1]}.$((${V[2]} + 1))"
-        echo $NEW > VERSION
-        echo "NEW_VERSION=$NEW" >> $GITHUB_ENV
-        echo "Version: $CURRENT -> $NEW"
+        chmod +x ./version.sh
+        CURRENT_VERSION=$(cat VERSION)
+        ./version.sh patch
+        NEW_VERSION=$(cat VERSION)
 
-    - name: Update files
+        if [ "$CURRENT_VERSION" = "$NEW_VERSION" ]; then
+          echo "Version did not change after patch bump"
+          exit 1
+        fi
+
+        echo "NEW_VERSION=$NEW_VERSION" >> "$GITHUB_ENV"
+        echo "Version: $CURRENT_VERSION -> $NEW_VERSION"
+
+    - name: Validate Debian changelog
       run: |
-        # Create new changelog entry
-        CURRENT_DATE=$(date -R)
-        
-        # Backup current changelog
-        cp debian/changelog debian/changelog.bak
-        
-        # Create new changelog with proper format
-        {
-          echo "openvpn-manager ($NEW_VERSION-1) unstable; urgency=medium"
-          echo ""
-          echo "  * Version $NEW_VERSION"
-          echo "  * Auto-generated release"
-          echo ""
-          echo " -- Iágson Carlos Lima Silva <iagsoncarlos@gmail.com>  $CURRENT_DATE"
-          echo ""
-          # Append old changelog (skip first entry)
-          tail -n +9 debian/changelog.bak
-        } > debian/changelog
-        
-        rm debian/changelog.bak
+        dpkg-parsechangelog > /dev/null
 
     - name: Build package
       run: |
         chmod +x ./build.sh
         ./build.sh
-        ./build.sh
+
+    - name: Verify package artifact
+      run: |
+        ls -lh dist/*.deb
 
     - name: Commit and tag
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         git add VERSION debian/changelog
-        git commit -m "Release v$NEW_VERSION"
+
+        if git diff --cached --quiet; then
+          echo "No release changes to commit"
+          exit 1
+        fi
+
+        git commit -m "release: v$NEW_VERSION"
         git tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION"
         git push origin main
         git push origin "v$NEW_VERSION"

@@ -7,6 +7,9 @@ set -e
 
 VERSION_FILE="VERSION"
 DEFAULT_VERSION="0.2.0"
+DEBIAN_CHANGELOG="debian/changelog"
+DEBIAN_MAINTAINER_NAME="Iagson Carlos Lima Silva"
+DEBIAN_MAINTAINER_EMAIL="iagsoncarlos@gmail.com"
 
 # Colors for output
 RED='\033[0;31m'
@@ -76,23 +79,28 @@ update_version_in_files() {
     fi
     
     # Update debian/changelog
-    if [ -f "debian/changelog" ]; then
+    if [ -f "$DEBIAN_CHANGELOG" ]; then
         # Create new changelog entry
         local temp_changelog=$(mktemp)
-        local current_date=$(date -R)
-        
-        # Ensure we're using the current year (not future dates)
-        local current_year=$(date +%Y)
-        current_date=$(date -R | sed "s/[0-9]\{4\}/$current_year/")
-        
+        local current_date
+        current_date=$(LC_ALL=C date -R)
+
         echo "openvpn-manager ($new_version-1) unstable; urgency=medium" > "$temp_changelog"
         echo "" >> "$temp_changelog"
         echo "  * Version bump to $new_version" >> "$temp_changelog"
         echo "" >> "$temp_changelog"
-        echo " -- Iagson Carlos Lima Silva <iagsoncarlos@gmail.com>  $current_date" >> "$temp_changelog"
+        # Keep maintainer trailer ASCII and on one line for dpkg changelog parser compatibility.
+        printf ' -- %s <%s>  %s\n' "$DEBIAN_MAINTAINER_NAME" "$DEBIAN_MAINTAINER_EMAIL" "$current_date" >> "$temp_changelog"
         echo "" >> "$temp_changelog"
-        cat "debian/changelog" >> "$temp_changelog"
-        mv "$temp_changelog" "debian/changelog"
+        cat "$DEBIAN_CHANGELOG" >> "$temp_changelog"
+
+        if ! dpkg-parsechangelog -l"$temp_changelog" >/dev/null 2>&1; then
+            rm -f "$temp_changelog"
+            log_error "Generated changelog entry is invalid for Debian tooling"
+            return 1
+        fi
+
+        mv "$temp_changelog" "$DEBIAN_CHANGELOG"
         log_success "debian/changelog updated"
     fi
     
